@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
@@ -69,9 +69,16 @@ function ChatRoom({ id }) {
       if (changedId !== id) return;
       setMembers((prev) =>
         change === 'join'
-          ? prev.some((m) => m.id === who.id) ? prev : [...prev, who]
+          ? prev.some((m) => m.id === who.id)
+            ? prev
+            : [...prev, { ...who, lastReadMessageId: Infinity }] // 새로 온 사람은 이전 메시지를 "안 읽음"으로 세지 않음
           : prev.filter((m) => m.id !== who.id),
       );
+    };
+    // 누가 어디까지 읽었는지 바뀜 → 메시지 옆 숫자 다시 계산
+    const onReadUpdate = ({ roomId: changedId, userId, lastReadMessageId }) => {
+      if (changedId !== id) return;
+      setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, lastReadMessageId } : m)));
     };
     // 끊겼다 다시 연결되면 방에 다시 들어가고, 그사이 놓친 메시지를 받아 온다
     const onConnect = async () => {
@@ -84,15 +91,38 @@ function ChatRoom({ id }) {
 
     socket.on('message:new', onNew);
     socket.on('room:members', onMembers);
+    socket.on('read:update', onReadUpdate);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     return () => {
       socket.off('message:new', onNew);
       socket.off('room:members', onMembers);
+      socket.off('read:update', onReadUpdate);
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
     };
   }, [id, token]);
+
+  // 읽음 처리: 화면이 보이고 있으면 마지막 메시지까지 읽었다고 서버에 알린다
+  const lastId = messages.at(-1)?.id ?? null;
+  const reportedRef = useRef(0);
+  useEffect(() => {
+    if (!lastId || !connected) return;
+    const report = () => {
+      if (document.visibilityState !== 'visible' || lastId <= reportedRef.current) return;
+      reportedRef.current = lastId;
+      socket.emit('message:read', { roomId: id, messageId: lastId });
+    };
+    report();
+    document.addEventListener('visibilitychange', report);
+    return () => document.removeEventListener('visibilitychange', report);
+  }, [id, lastId, connected]);
+
+  // 메시지별 "안 읽은 사람 수" = 보낸 사람을 뺀 참여자 중 책갈피가 그 메시지보다 앞인 사람 수
+  const unreadCountOf = useMemo(() => {
+    const marks = members.map((m) => ({ id: m.id, last: m.lastReadMessageId ?? 0 }));
+    return (message) => marks.filter((m) => m.id !== message.user?.id && m.last < message.id).length;
+  }, [members]);
 
   const sendMessage = useCallback(
     async (content) => {
@@ -169,6 +199,7 @@ function ChatRoom({ id }) {
         hasMore={hasMore}
         loadingOlder={loadingOlder}
         onLoadOlder={loadOlder}
+        unreadCountOf={unreadCountOf}
       />
       <MessageInput onSend={sendMessage} disabled={!connected} />
     </main>

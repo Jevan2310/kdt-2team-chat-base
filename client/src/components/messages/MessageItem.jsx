@@ -3,7 +3,7 @@
 
 const timeOf = (createdAt) => createdAt?.slice(11, 16) ?? ''; // "2026-11-27 13:19:58" → "13:19"
 
-function TextMessage({ message, mine }) {
+function TextMessage({ message, mine, unread }) {
   return (
     <div className={`msg ${mine ? 'msg-mine' : ''}`}>
       {!mine && (
@@ -14,7 +14,10 @@ function TextMessage({ message, mine }) {
       )}
       <div className="msg-row">
         <div className="msg-bubble">{message.content}</div>
-        <span className="msg-time">{timeOf(message.createdAt)}</span>
+        <span className="msg-side">
+          {unread > 0 && <span className="msg-unread" title={`${unread}명이 아직 안 읽음`}>{unread}</span>}
+          <span className="msg-time">{timeOf(message.createdAt)}</span>
+        </span>
       </div>
     </div>
   );
@@ -29,7 +32,7 @@ const RENDERERS = {
   system: SystemMessage,
 };
 
-export default function MessageItem({ message, mine }) {
+export default function MessageItem({ message, mine, unread }) {
   const Renderer = RENDERERS[message.type] ?? TextMessage; // 모르는 종류는 일반 글처럼
-  return <Renderer message={message} mine={mine} />;
+  return <Renderer message={message} mine={mine} unread={unread} />;
 }

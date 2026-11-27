@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
+import { useUnread } from '../notifications/useUnread.js';
 
 export default function RoomListPage() {
   const { token, user } = useAuth();
+  const { counts, syncFromRooms } = useUnread();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,10 +18,13 @@ export default function RoomListPage() {
   // 처음 열 때 방 목록 받기
   useEffect(() => {
     api('/rooms', { token })
-      .then((data) => setRooms(data.rooms))
+      .then((data) => {
+        setRooms(data.rooms);
+        syncFromRooms(data.rooms); // 안 읽은 개수도 최신으로
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, syncFromRooms]);
 
   // 다른 사람이 방을 만들거나 들어오고 나가면 목록을 바로 고친다
   useEffect(() => {
@@ -95,6 +100,7 @@ export default function RoomListPage() {
               <Link to={`/rooms/${room.id}`} className="room-item">
                 <span className="room-name">{room.name}</span>
                 <span className="room-meta">
+                  {counts[room.id] > 0 && <span className="badge-unread">{counts[room.id] > 99 ? '99+' : counts[room.id]}</span>}
                   {room.joined && <span className="badge-joined">참여 중</span>}
                   <span>👥 {room.memberCount}</span>
                 </span>

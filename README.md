@@ -12,7 +12,7 @@ KDT 풀스택 4회차 기본 프로젝트 2팀 · 주제: **실시간 채팅 웹
 | 2 | 회원가입·로그인 (JWT) | ✅ |
 | 3 | 채팅방 만들기·목록·입장 | ✅ |
 | 4 | 실시간 메시지 + 저장·이전 대화 | ✅ |
-| 5 | 읽음 숫자 + 안 읽은 개수 알림 | ⏳ |
+| 5 | 읽음 숫자 + 안 읽은 개수 알림 | ✅ |
 | 6 | 반응형 화면 | ⏳ |
 
 ## 기술
@@ -35,6 +35,7 @@ client/                 React 화면 (localhost:5173)
   src/lib/api.js        REST API 호출 도우미
   src/lib/socket.js     소켓 연결 (앱 전체에서 하나)
   src/auth/             로그인 상태(AuthProvider, useAuth), 로그인 필요한 화면 보호(RequireAuth)
+  src/notifications/    안 읽은 개수(UnreadProvider, useUnread), 새 메시지 토스트
 server/                 Express + Socket.IO (localhost:3000)
   src/modules/<기능>/   기능별 API (health, auth, rooms, messages …)
   src/middleware/       requireAuth (로그인 확인)

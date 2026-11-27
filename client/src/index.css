@@ -68,7 +68,10 @@ a { color: var(--primary); text-decoration: none; }
 .msg-mine .msg-row { flex-direction: row-reverse; }
 .msg-bubble { padding: 8px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
 .msg-mine .msg-bubble { background: var(--primary); border-color: var(--primary); color: #fff; }
-.msg-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+.msg-side { display: flex; flex-direction: column; align-items: flex-start; flex-shrink: 0; line-height: 1.2; }
+.msg-mine .msg-side { align-items: flex-end; }
+.msg-unread { font-size: 11px; font-weight: 700; color: #e0a800; }
+.msg-time { font-size: 11px; color: var(--muted); }
 .msg-system { align-self: center; text-align: center; margin: 6px auto; font-size: 12px; color: var(--muted); }
 
 .msg-input { border-top: 1px solid var(--border); padding: 10px 12px; }
@@ -78,3 +81,12 @@ a { color: var(--primary); text-decoration: none; }
 .msg-input textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .msg-input button { padding: 10px 16px; border: none; border-radius: 10px; background: var(--primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .msg-input button:disabled { opacity: 0.5; cursor: default; }
+
+.badge-unread { display: inline-block; min-width: 20px; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #e5484d; color: #fff; font-size: 12px; font-weight: 700; text-align: center; line-height: 18px; }
+.room-meta .badge-unread { margin-left: 0; }
+
+.toasts { position: fixed; right: 16px; bottom: 16px; z-index: 10; display: flex; flex-direction: column; gap: 8px; max-width: min(340px, calc(100vw - 32px)); }
+.toast { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 14px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); font: inherit; cursor: pointer; animation: toast-in 0.2s ease-out; }
+.toast strong { font-size: 13px; }
+.toast span { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }

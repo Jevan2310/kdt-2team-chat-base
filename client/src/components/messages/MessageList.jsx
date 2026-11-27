@@ -6,7 +6,7 @@ const dateOf = (createdAt) => createdAt?.slice(0, 10) ?? '';
 // 메시지 목록 + 스크롤 관리
 // - 새 메시지: 맨 아래를 보고 있었거나 내가 보낸 거면 맨 아래로
 // - 이전 대화 불러오기: 보던 위치 그대로 유지
-export default function MessageList({ messages, myId, hasMore, loadingOlder, onLoadOlder }) {
+export default function MessageList({ messages, myId, hasMore, loadingOlder, onLoadOlder, unreadCountOf }) {
   const boxRef = useRef(null);
   const prev = useRef({ firstId: null, lastId: null, scrollHeight: 0, nearBottom: true });
 
@@ -45,7 +45,7 @@ export default function MessageList({ messages, myId, hasMore, loadingOlder, onL
           {dateOf(m.createdAt) !== dateOf(messages[i - 1]?.createdAt) && (
             <div className="msg-date">{dateOf(m.createdAt)}</div>
           )}
-          <MessageItem message={m} mine={m.type === 'text' && m.user?.id === myId} />
+          <MessageItem message={m} mine={m.type === 'text' && m.user?.id === myId} unread={unreadCountOf?.(m) ?? 0} />
         </div>
       ))}
     </div>
