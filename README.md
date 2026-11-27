@@ -10,7 +10,7 @@ KDT 풀스택 4회차 기본 프로젝트 2팀 · 주제: **실시간 채팅 웹
 |---|---|---|
 | 1 | 폴더 구조, 서버·화면 뼈대, DB 테이블 | ✅ |
 | 2 | 회원가입·로그인 (JWT) | ✅ |
-| 3 | 채팅방 만들기·목록·입장 | ⏳ |
+| 3 | 채팅방 만들기·목록·입장 | ✅ |
 | 4 | 실시간 메시지 + 저장·이전 대화 | ⏳ |
 | 5 | 읽음 숫자 + 안 읽은 개수 알림 | ⏳ |
 | 6 | 반응형 화면 | ⏳ |
@@ -38,11 +38,11 @@ server/                 Express + Socket.IO (localhost:3000)
   src/modules/<기능>/   기능별 API (health, auth, rooms, messages …)
   src/middleware/       requireAuth (로그인 확인)
   scripts/              테스트 데이터 스크립트
-  src/socket/           소켓 이벤트
+  src/socket/           소켓 이벤트 (io.js: API 코드에서도 소켓 알림을 보낼 때)
   src/db.js             MySQL 연결 풀
 db/schema.sql           테이블 (⚠️ 실행하면 기존 데이터 삭제)
 db/seed.sql             기본 데이터 (기본 채팅방 2개)
-docs/                   API·소켓 이벤트 약속 문서 → [REST API](docs/REST-API.md)
+docs/                   API·소켓 이벤트 약속 문서 → [REST API](docs/REST-API.md), [소켓 이벤트](docs/소켓-이벤트.md)
 ```
 
 ## 실행 방법

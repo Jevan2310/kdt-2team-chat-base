@@ -1,12 +1,14 @@
 import { Server } from 'socket.io';
 import { config } from '../config.js';
 import { verifyToken, findUserById } from '../modules/auth/auth.service.js';
+import { setIo } from './io.js';
 
 // Express와 같은 http 서버에 Socket.IO를 붙인다.
 export function attachSocket(httpServer) {
   const io = new Server(httpServer, {
     cors: { origin: config.clientOrigin },
   });
+  setIo(io);
 
   // 연결 전에 로그인 토큰 확인 → 통과하면 socket.data.user 에 사용자 저장
   io.use(async (socket, next) => {
