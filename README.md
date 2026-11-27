@@ -11,7 +11,7 @@ KDT 풀스택 4회차 기본 프로젝트 2팀 · 주제: **실시간 채팅 웹
 | 1 | 폴더 구조, 서버·화면 뼈대, DB 테이블 | ✅ |
 | 2 | 회원가입·로그인 (JWT) | ✅ |
 | 3 | 채팅방 만들기·목록·입장 | ✅ |
-| 4 | 실시간 메시지 + 저장·이전 대화 | ⏳ |
+| 4 | 실시간 메시지 + 저장·이전 대화 | ✅ |
 | 5 | 읽음 숫자 + 안 읽은 개수 알림 | ⏳ |
 | 6 | 반응형 화면 | ⏳ |
 
@@ -30,6 +30,7 @@ KDT 풀스택 4회차 기본 프로젝트 2팀 · 주제: **실시간 채팅 웹
 ```text
 client/                 React 화면 (localhost:5173)
   src/pages/            화면 단위 (로그인, 가입, 방 목록, 채팅방)
+  src/components/messages/  메시지 목록·입력, 종류별 메시지 그리기(MessageItem)
   src/features/         추가 기능 화면을 기능별 폴더로
   src/lib/api.js        REST API 호출 도우미
   src/lib/socket.js     소켓 연결 (앱 전체에서 하나)
@@ -92,6 +93,7 @@ npm run dev               # http://localhost:5173
 |---|---|
 | 서버 API | `server/src/modules/<기능>/` 폴더를 만들고 `app.js`에 `app.use('/api/<기능>', …)` 한 줄 추가 |
 | 화면 | `client/src/features/<기능>/` 에 컴포넌트, 필요하면 `App.jsx`에 Route 추가 |
+| 새 메시지 종류 | `MessageItem.jsx`의 `RENDERERS` 표에 `type: 컴포넌트` 한 줄 추가 (예: `bot: BotMessage`) |
 | DB | 새 테이블은 따로 만들고, 기존 테이블의 **확장 칸**을 활용 |
 
 **확장 칸** (처음부터 넣어 둔 칸)

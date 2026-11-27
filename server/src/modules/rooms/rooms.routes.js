@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
-import { listRooms, findRoom, listMembers, createRoom, joinRoom, leaveRoom } from './rooms.service.js';
+import { listRooms, findRoom, listMembers, createRoom, joinRoom, leaveRoom, isMember } from './rooms.service.js';
+import { listMessages, saveMessage } from '../messages/messages.service.js';
 
 const router = Router();
 router.use(requireAuth); // 이 아래 API는 모두 로그인 필요
@@ -40,7 +41,10 @@ router.get('/:roomId', loadRoom, async (req, res) => {
 router.post('/:roomId/join', loadRoom, async (req, res) => {
   const isNew = await joinRoom(req.room.id, req.user.id);
   if (isNew) {
-    getIo().emit('room:members', { roomId: req.room.id, change: 'join', user: req.user });
+    const io = getIo();
+    io.emit('room:members', { roomId: req.room.id, change: 'join', user: req.user });
+    const notice = await saveMessage({ roomId: req.room.id, type: 'system', content: `${req.user.nickname}님이 들어왔어요.` });
+    io.to(`room:${req.room.id}`).emit('message:new', notice);
   }
   res.json({ joined: true, isNew });
 });
@@ -49,9 +53,24 @@ router.post('/:roomId/join', loadRoom, async (req, res) => {
 router.post('/:roomId/leave', loadRoom, async (req, res) => {
   const left = await leaveRoom(req.room.id, req.user.id);
   if (left) {
-    getIo().emit('room:members', { roomId: req.room.id, change: 'leave', user: req.user });
+    const io = getIo();
+    // 이 사람의 모든 소켓(탭)을 방 소켓 그룹에서 빼서 더 이상 메시지를 받지 않게
+    io.in(`user:${req.user.id}`).socketsLeave(`room:${req.room.id}`);
+    io.emit('room:members', { roomId: req.room.id, change: 'leave', user: req.user });
+    const notice = await saveMessage({ roomId: req.room.id, type: 'system', content: `${req.user.nickname}님이 나갔어요.` });
+    io.to(`room:${req.room.id}`).emit('message:new', notice);
   }
   res.json({ left });
+});
+
+// GET /api/rooms/:roomId/messages?before=<메시지 id>&limit=50 → { messages, hasMore }
+router.get('/:roomId/messages', loadRoom, async (req, res) => {
+  if (!(await isMember(req.room.id, req.user.id))) {
+    return res.status(403).json({ message: '참여한 방의 메시지만 볼 수 있어요.' });
+  }
+  const before = Number(req.query.before) || null;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+  res.json(await listMessages(req.room.id, { before, limit }));
 });
 
 export default router;

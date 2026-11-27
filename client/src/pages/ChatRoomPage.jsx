@@ -1,54 +1,126 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
+import MessageList from '../components/messages/MessageList.jsx';
+import MessageInput from '../components/messages/MessageInput.jsx';
 
+// 같은 id는 한 번만, id 순서대로 (소켓으로 온 것과 API로 받은 것이 겹칠 수 있음)
+function mergeMessages(...lists) {
+  const byId = new Map();
+  lists.flat().forEach((m) => byId.set(m.id, m));
+  return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+
+// 소켓 emit 을 await 할 수 있게 (서버가 ack 로 답함)
+const emitWithAck = (event, data) => new Promise((resolve) => socket.emit(event, data, resolve));
+
+// 방 주소가 바뀌면(key 변경) 화면 상태를 처음부터 새로 만든다
 export default function ChatRoomPage() {
   const { roomId } = useParams();
-  const { token } = useAuth();
+  return <ChatRoom key={roomId} id={Number(roomId)} />;
+}
+
+function ChatRoom({ id }) {
+  const { token, user } = useAuth();
   const navigate = useNavigate();
   const [room, setRoom] = useState(null);
   const [members, setMembers] = useState([]);
+  const [showMembers, setShowMembers] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [connected, setConnected] = useState(socket.connected);
   const [error, setError] = useState('');
 
-  // 방에 들어오면: 참여(이미 참여 중이면 그대로) → 방 정보·참여자 받기
+  // 방에 들어오면: 참여 → 소켓 방 입장 → 방 정보·참여자·최근 메시지
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        await api(`/rooms/${roomId}/join`, { method: 'POST', token });
-        const data = await api(`/rooms/${roomId}`, { token });
-        if (!cancelled) {
-          setRoom(data.room);
-          setMembers(data.members);
-        }
+        await api(`/rooms/${id}/join`, { method: 'POST', token });
+        if (socket.connected) await emitWithAck('room:join', { roomId: id });
+        const [detail, history] = await Promise.all([
+          api(`/rooms/${id}`, { token }),
+          api(`/rooms/${id}/messages`, { token }),
+        ]);
+        if (cancelled) return;
+        setRoom(detail.room);
+        setMembers(detail.members);
+        setMessages((prev) => mergeMessages(history.messages, prev));
+        setHasMore(history.hasMore);
       } catch (err) {
         if (!cancelled) setError(err.message);
       }
     })();
     return () => {
       cancelled = true;
+      socket.emit('room:leave', { roomId: id });
     };
-  }, [roomId, token]);
+  }, [id, token]);
 
-  // 다른 사람이 들어오고 나가면 참여자 목록 고치기
+  // 실시간: 새 메시지, 참여자 변화, 소켓 재연결
   useEffect(() => {
-    const onMembers = ({ roomId: changedId, change, user }) => {
-      if (changedId !== Number(roomId)) return;
+    const onNew = (message) => {
+      if (message.roomId === id) setMessages((prev) => mergeMessages(prev, [message]));
+    };
+    const onMembers = ({ roomId: changedId, change, user: who }) => {
+      if (changedId !== id) return;
       setMembers((prev) =>
         change === 'join'
-          ? prev.some((m) => m.id === user.id) ? prev : [...prev, user]
-          : prev.filter((m) => m.id !== user.id),
+          ? prev.some((m) => m.id === who.id) ? prev : [...prev, who]
+          : prev.filter((m) => m.id !== who.id),
       );
     };
+    // 끊겼다 다시 연결되면 방에 다시 들어가고, 그사이 놓친 메시지를 받아 온다
+    const onConnect = async () => {
+      setConnected(true);
+      await emitWithAck('room:join', { roomId: id });
+      const history = await api(`/rooms/${id}/messages`, { token }).catch(() => null);
+      if (history) setMessages((prev) => mergeMessages(prev, history.messages));
+    };
+    const onDisconnect = () => setConnected(false);
+
+    socket.on('message:new', onNew);
     socket.on('room:members', onMembers);
-    return () => socket.off('room:members', onMembers);
-  }, [roomId]);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('message:new', onNew);
+      socket.off('room:members', onMembers);
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, [id, token]);
+
+  const sendMessage = useCallback(
+    async (content) => {
+      if (!socket.connected) return { ok: false, message: '연결이 끊겨 있어요. 잠시 후 다시 보내 주세요.' };
+      const result = await emitWithAck('message:send', { roomId: id, content });
+      if (result.ok) setMessages((prev) => mergeMessages(prev, [result.message]));
+      return result;
+    },
+    [id],
+  );
+
+  const loadOlder = async () => {
+    if (!messages.length) return;
+    setLoadingOlder(true);
+    try {
+      const older = await api(`/rooms/${id}/messages?before=${messages[0].id}`, { token });
+      setMessages((prev) => mergeMessages(older.messages, prev));
+      setHasMore(older.hasMore);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   const onLeave = async () => {
     try {
-      await api(`/rooms/${roomId}/leave`, { method: 'POST', token });
+      await api(`/rooms/${id}/leave`, { method: 'POST', token });
       navigate('/rooms');
     } catch (err) {
       setError(err.message);
@@ -66,28 +138,39 @@ export default function ChatRoomPage() {
   if (!room) return <main className="page">불러오는 중…</main>;
 
   return (
-    <main className="page">
-      <div className="room-header">
+    <main className="chat-room">
+      <header className="room-header">
         <Link to="/rooms" aria-label="채팅방 목록으로">←</Link>
         <h1>{room.name}</h1>
+        <button type="button" className="link-button" onClick={() => setShowMembers((v) => !v)} aria-expanded={showMembers}>
+          👥 {members.length}
+        </button>
         <button type="button" className="link-button danger" onClick={onLeave}>나가기</button>
-      </div>
+      </header>
 
-      <section className="members">
-        <h2>참여자 {members.length}명</h2>
-        <ul>
-          {members.map((m) => (
-            <li key={m.id}>
-              {m.nickname}
-              {m.department && <small> · {m.department}</small>}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {showMembers && (
+        <section className="members">
+          <ul>
+            {members.map((m) => (
+              <li key={m.id}>
+                {m.nickname}
+                {m.department && <small> · {m.department}</small>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      <section className="messages-placeholder">
-        <p className="muted">메시지는 4단계에서 구현해요.</p>
-      </section>
+      {!connected && <p className="conn-warning">연결이 끊겼어요. 다시 연결하는 중…</p>}
+
+      <MessageList
+        messages={messages}
+        myId={user.id}
+        hasMore={hasMore}
+        loadingOlder={loadingOlder}
+        onLoadOlder={loadOlder}
+      />
+      <MessageInput onSend={sendMessage} disabled={!connected} />
     </main>
   );
 }

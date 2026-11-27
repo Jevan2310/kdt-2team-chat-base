@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import { config } from '../config.js';
 import { verifyToken, findUserById } from '../modules/auth/auth.service.js';
 import { setIo } from './io.js';
+import { registerChatHandlers } from './chat.handlers.js';
 
 // Express와 같은 http 서버에 Socket.IO를 붙인다.
 export function attachSocket(httpServer) {
@@ -25,7 +26,10 @@ export function attachSocket(httpServer) {
   io.on('connection', (socket) => {
     const { user } = socket.data;
     console.log('[socket] 연결:', user.username, socket.id);
+    socket.join(`user:${user.id}`); // 한 사람이 탭 여러 개를 열어도 "user:N" 으로 한꺼번에 다룰 수 있게
     socket.emit('server:hello', { message: `${user.nickname}님 소켓 연결 성공`, socketId: socket.id });
+
+    registerChatHandlers(io, socket);
 
     socket.on('disconnect', (reason) => {
       console.log('[socket] 끊김:', user.username, reason);
