@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { socket } from '../lib/socket.js';
+import { socket, useSocketConnected } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
 import MessageList from '../components/messages/MessageList.jsx';
 import MessageInput from '../components/messages/MessageInput.jsx';
@@ -31,7 +31,7 @@ function ChatRoom({ id }) {
   const [messages, setMessages] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [connected, setConnected] = useState(socket.connected);
+  const connected = useSocketConnected();
   const [error, setError] = useState('');
 
   // 방에 들어오면: 참여 → 소켓 방 입장 → 방 정보·참여자·최근 메시지
@@ -60,7 +60,7 @@ function ChatRoom({ id }) {
     };
   }, [id, token]);
 
-  // 실시간: 새 메시지, 참여자 변화, 소켓 재연결
+  // 실시간: 새 메시지, 참여자 변화, 소켓 재연결 (연결 상태 표시는 useSocketConnected)
   useEffect(() => {
     const onNew = (message) => {
       if (message.roomId === id) setMessages((prev) => mergeMessages(prev, [message]));
@@ -82,24 +82,20 @@ function ChatRoom({ id }) {
     };
     // 끊겼다 다시 연결되면 방에 다시 들어가고, 그사이 놓친 메시지를 받아 온다
     const onConnect = async () => {
-      setConnected(true);
       await emitWithAck('room:join', { roomId: id });
       const history = await api(`/rooms/${id}/messages`, { token }).catch(() => null);
       if (history) setMessages((prev) => mergeMessages(prev, history.messages));
     };
-    const onDisconnect = () => setConnected(false);
 
     socket.on('message:new', onNew);
     socket.on('room:members', onMembers);
     socket.on('read:update', onReadUpdate);
     socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
     return () => {
       socket.off('message:new', onNew);
       socket.off('room:members', onMembers);
       socket.off('read:update', onReadUpdate);
       socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
     };
   }, [id, token]);
 
