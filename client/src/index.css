@@ -71,7 +71,43 @@ a { color: var(--primary); text-decoration: none; }
 .msg-mine .msg-bubble { background: var(--primary); border-color: var(--primary); color: #fff; }
 .msg-side { display: flex; flex-direction: column; align-items: flex-start; flex-shrink: 0; line-height: 1.2; }
 .msg-mine .msg-side { align-items: flex-end; }
-.msg-unread { font-size: 11px; font-weight: 700; color: #e0a800; }
+.msg-unread { font-size: 11px; font-weight: 700; color: #e0a800; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; }
+.msg-unread:hover { text-decoration: underline; }
+.msg-bubble[role='button'] { cursor: pointer; }
+.msg-selected { box-shadow: 0 0 0 2px #9db8ee; }
+.msg-edited { font-size: 11px; opacity: 0.75; }
+.msg-deleted, .msg-mine .msg-deleted { background: transparent; border: 1px dashed var(--border); color: var(--muted); font-style: italic; }
+
+/* 메시지 메뉴 (말풍선을 누르면) */
+.msg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; padding: 4px 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.08); font-size: 13px; }
+.msg-actions button { background: none; border: none; padding: 4px 8px; border-radius: 6px; font: inherit; color: var(--text); cursor: pointer; }
+.msg-actions button:hover { background: #eef1f5; }
+.msg-actions .emoji { font-size: 18px; padding: 2px 4px; }
+.msg-actions .danger { color: #d14343; }
+.msg-actions .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
+
+/* 반응 칩 */
+.msg-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.reaction { padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font: inherit; font-size: 13px; cursor: pointer; }
+.reaction-mine { border-color: var(--primary); background: #e8f0fe; color: var(--primary); font-weight: 600; }
+
+/* 수정 칸 */
+.msg-edit { display: flex; flex-direction: column; gap: 6px; min-width: min(320px, 70vw); }
+.msg-edit textarea { resize: none; field-sizing: content; max-height: 160px; padding: 8px 12px; border: 1px solid var(--primary); border-radius: 12px; font: inherit; line-height: 1.45; }
+.msg-edit-buttons { display: flex; justify-content: flex-end; gap: 6px; }
+.msg-edit-buttons button { padding: 4px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font: inherit; font-size: 13px; cursor: pointer; }
+.msg-edit-buttons .primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.msg-edit-buttons button:disabled { opacity: 0.5; cursor: default; }
+
+/* 읽음 확인 창 */
+.dialog-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.dialog { width: min(360px, 100%); max-height: 70vh; overflow-y: auto; background: var(--surface); border-radius: 14px; padding: 16px 20px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.2); }
+.dialog header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.dialog h2 { font-size: 17px; margin: 0; }
+.dialog h3 { font-size: 14px; margin: 12px 0 4px; }
+.dialog ul { margin: 0; padding-left: 20px; line-height: 1.8; }
+.dialog small { color: var(--muted); }
+.dialog p { margin: 0; }
 .msg-time { font-size: 11px; color: var(--muted); }
 .msg-system { align-self: center; text-align: center; margin: 6px auto; font-size: 12px; color: var(--muted); }
 
@@ -112,5 +148,5 @@ a { color: var(--primary); text-decoration: none; }
   .topnav { gap: 12px; }
   .msg-row { max-width: 88%; }
   /* iOS 에서 입력칸을 누르면 화면이 확대되는 것 방지 (16px 이상) */
-  .msg-input textarea, .room-create input, .auth-form input { font-size: 16px; }
+  .msg-input textarea, .room-create input, .auth-form input, .msg-edit textarea { font-size: 16px; }
 }

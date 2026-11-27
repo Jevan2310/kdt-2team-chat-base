@@ -34,12 +34,17 @@
 {
   "id": 3, "roomId": 2, "type": "text", "content": "안녕하세요 👋", "metadata": null,
   "createdAt": "2026-11-27 13:19:58",
+  "editedAt": null, "deletedAt": null,
+  "reactions": [{ "emoji": "👍", "userIds": [2, 3] }],
   "user": { "id": 1, "nickname": "김테스트", "department": "개발팀", "role": "user" }
 }
 ```
 
 - `type`: `text` 일반 글, `system` 입장·퇴장 안내 (`user`가 `null`). 확장: `bot`, `vacation` 등 + `metadata`
-- 메시지 보내기는 REST가 아니라 소켓 `message:send` ([소켓 이벤트](소켓-이벤트.md))
+- `editedAt`: 수정했으면 시각 (화면에 "(수정됨)")
+- `deletedAt`: 지웠으면 시각. 이때 `content`는 `""`, `metadata`·`reactions`는 비어 있음 (행은 남겨서 읽음 책갈피·순서가 안 꼬임)
+- `reactions`: 반응별로 누른 사람 id, 먼저 누른 순서. 쓸 수 있는 반응은 👍 ❤️ 😂 😮 😢 🙏 (서버 `REACTION_EMOJIS`와 화면 `reactions.js`가 같아야 함)
+- 메시지 보내기·수정·삭제·반응은 REST가 아니라 소켓 ([소켓 이벤트](소켓-이벤트.md))
 
 ## 채팅방 규칙
 - 지금은 공개 그룹 방(`type = 'group'`)만 있어요. 목록에 모든 그룹 방이 보이고, 방에 들어가면 자동으로 참여돼요.
@@ -52,3 +57,4 @@
 - **메시지 옆 숫자** (카톡식) = 보낸 사람을 뺀 참여자 중 책갈피가 그 메시지보다 앞인 사람 수 → 화면에서 `members`로 계산
 - 처음 참여하면 책갈피 = 그 방의 마지막 메시지 → 들어오기 전 메시지는 "안 읽음"으로 세지 않음
 - 메시지를 보내면 보낸 사람의 책갈피도 그 메시지로 이동
+- **읽음 확인 창** = 메시지 옆 숫자와 같은 기준으로 참여자를 "읽음 / 안 읽음"으로 나눈 것 (서버 요청 없이 화면의 `members`로 계산)

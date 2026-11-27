@@ -5,6 +5,7 @@ import { socket, useSocketConnected } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
 import MessageList from '../components/messages/MessageList.jsx';
 import MessageInput from '../components/messages/MessageInput.jsx';
+import ReadersDialog from '../components/messages/ReadersDialog.jsx';
 
 // 같은 id는 한 번만, id 순서대로 (소켓으로 온 것과 API로 받은 것이 겹칠 수 있음)
 function mergeMessages(...lists) {
@@ -33,6 +34,8 @@ function ChatRoom({ id }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const connected = useSocketConnected();
   const [error, setError] = useState('');
+  const [readersOf, setReadersOf] = useState(null); // 읽음 확인 창을 연 메시지
+  const [notice, setNotice] = useState(''); // 수정·삭제·반응 실패 안내
 
   // 방에 들어오면: 참여 → 소켓 방 입장 → 방 정보·참여자·최근 메시지
   useEffect(() => {
@@ -60,8 +63,9 @@ function ChatRoom({ id }) {
     };
   }, [id, token]);
 
-  // 실시간: 새 메시지, 참여자 변화, 소켓 재연결 (연결 상태 표시는 useSocketConnected)
+  // 실시간: 새 메시지, 메시지 변경(수정·삭제·반응), 참여자 변화, 소켓 재연결 (연결 상태 표시는 useSocketConnected)
   useEffect(() => {
+    // 새 메시지든 바뀐 메시지든 같은 id 는 새것으로 바꿔 끼우면 된다
     const onNew = (message) => {
       if (message.roomId === id) setMessages((prev) => mergeMessages(prev, [message]));
     };
@@ -88,11 +92,13 @@ function ChatRoom({ id }) {
     };
 
     socket.on('message:new', onNew);
+    socket.on('message:updated', onNew);
     socket.on('room:members', onMembers);
     socket.on('read:update', onReadUpdate);
     socket.on('connect', onConnect);
     return () => {
       socket.off('message:new', onNew);
+      socket.off('message:updated', onNew);
       socket.off('room:members', onMembers);
       socket.off('read:update', onReadUpdate);
       socket.off('connect', onConnect);
@@ -119,6 +125,34 @@ function ChatRoom({ id }) {
     const marks = members.map((m) => ({ id: m.id, last: m.lastReadMessageId ?? 0 }));
     return (message) => marks.filter((m) => m.id !== message.user?.id && m.last < message.id).length;
   }, [members]);
+
+  // 읽음 확인 창 내용: 보낸 사람을 뺀 참여자를 읽음/안 읽음으로 나눈다 (숫자 계산과 같은 기준)
+  const readers = useMemo(() => {
+    if (!readersOf) return null;
+    const others = members.filter((m) => m.id !== readersOf.user?.id);
+    const isRead = (m) => (m.lastReadMessageId ?? 0) >= readersOf.id;
+    return { read: others.filter(isRead), unread: others.filter((m) => !isRead(m)) };
+  }, [readersOf, members]);
+
+  // 메시지 메뉴(수정·삭제·반응)가 쓰는 것들. 결과는 서버가 message:updated 로도 보내지만, 내 화면은 ack 로 바로 반영
+  const messageCtx = useMemo(() => {
+    const byId = new Map(members.map((m) => [m.id, m.nickname]));
+    const change = async (event, data) => {
+      if (!socket.connected) return { ok: false, message: '연결이 끊겨 있어요.' };
+      const result = await emitWithAck(event, data);
+      if (result.ok) setMessages((prev) => mergeMessages(prev, [result.message]));
+      return result;
+    };
+    const tell = (result) => setNotice(result.ok ? '' : result.message);
+    return {
+      myId: user.id,
+      nameOf: (userId) => byId.get(userId) ?? '나간 사람',
+      onReact: async (message, emoji) => tell(await change('reaction:toggle', { messageId: message.id, emoji })),
+      onDelete: async (message) => tell(await change('message:delete', { messageId: message.id })),
+      onEdit: (message, content) => change('message:edit', { messageId: message.id, content }), // 결과는 수정칸이 보여 줌
+      onShowReaders: setReadersOf,
+    };
+  }, [members, user.id]);
 
   const sendMessage = useCallback(
     async (content) => {
@@ -191,13 +225,19 @@ function ChatRoom({ id }) {
 
       <MessageList
         messages={messages}
-        myId={user.id}
         hasMore={hasMore}
         loadingOlder={loadingOlder}
         onLoadOlder={loadOlder}
         unreadCountOf={unreadCountOf}
+        ctx={messageCtx}
       />
+      {notice && (
+        <p className="conn-warning" role="alert">
+          {notice} <button type="button" className="link-button" onClick={() => setNotice('')}>닫기</button>
+        </p>
+      )}
       <MessageInput onSend={sendMessage} disabled={!connected} />
+      {readers && <ReadersDialog readers={readers} onClose={() => setReadersOf(null)} />}
     </div>
   );
 }

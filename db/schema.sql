@@ -6,6 +6,7 @@ CREATE DATABASE IF NOT EXISTS team_chat
   DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE team_chat;
 
+DROP TABLE IF EXISTS message_reactions;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS room_members;
 DROP TABLE IF EXISTS rooms;
@@ -52,7 +53,20 @@ CREATE TABLE messages (
   content     TEXT NOT NULL,
   metadata    JSON NULL,                                   -- 확장 칸: 종류별 추가 데이터 (예: 휴가 날짜)
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  edited_at   DATETIME NULL,                               -- 수정한 시각 (화면에 "수정됨")
+  deleted_at  DATETIME NULL,                               -- 삭제한 시각 (행은 남기고 내용만 비움 → 읽음 숫자가 안 꼬임)
   FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
   INDEX idx_room_message (room_id, id)                     -- 방별 최근 메시지 조회용
+);
+
+-- 메시지 반응 (이모지). 한 사람이 한 메시지에 같은 이모지는 한 번만 → 다시 누르면 취소
+CREATE TABLE message_reactions (
+  message_id  INT NOT NULL,
+  user_id     INT NOT NULL,
+  emoji       VARCHAR(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- _bin: 이모지끼리 같다고 비교되지 않게
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_id, user_id, emoji),
+  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

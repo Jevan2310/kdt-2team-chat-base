@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import MessageItem from './MessageItem.jsx';
 
 const dateOf = (createdAt) => createdAt?.slice(0, 10) ?? '';
@@ -6,9 +6,14 @@ const dateOf = (createdAt) => createdAt?.slice(0, 10) ?? '';
 // 메시지 목록 + 스크롤 관리
 // - 새 메시지: 맨 아래를 보고 있었거나 내가 보낸 거면 맨 아래로
 // - 이전 대화 불러오기: 보던 위치 그대로 유지
-export default function MessageList({ messages, myId, hasMore, loadingOlder, onLoadOlder, unreadCountOf }) {
+// - 수정·반응처럼 메시지가 바뀌기만 했으면: 스크롤을 건드리지 않음 (맨 아래를 보고 있었으면 맨 아래 유지)
+export default function MessageList({ messages, hasMore, loadingOlder, onLoadOlder, unreadCountOf, ctx }) {
+  const { myId } = ctx;
   const boxRef = useRef(null);
   const prev = useRef({ firstId: null, lastId: null, scrollHeight: 0, nearBottom: true });
+  const [selectedId, setSelectedId] = useState(null); // 메뉴가 열린 메시지
+  const [editingId, setEditingId] = useState(null); // 수정 중인 메시지
+  const itemCtx = { ...ctx, onSelect: setSelectedId, onStartEdit: setEditingId };
 
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -17,7 +22,10 @@ export default function MessageList({ messages, myId, hasMore, loadingOlder, onL
     const last = messages[messages.length - 1];
     const p = prev.current;
 
-    if (p.firstId !== null && first.id < p.firstId && last.id === p.lastId) {
+    if (first.id === p.firstId && last.id === p.lastId) {
+      // 목록은 그대로, 내용만 바뀜 (수정·삭제·반응)
+      if (p.nearBottom) box.scrollTop = box.scrollHeight;
+    } else if (p.firstId !== null && first.id < p.firstId && last.id === p.lastId) {
       // 위쪽에 이전 메시지가 붙었음 → 늘어난 높이만큼 내려서 보던 곳 유지
       box.scrollTop += box.scrollHeight - p.scrollHeight;
     } else if (p.lastId === null || p.nearBottom || last.user?.id === myId) {
@@ -45,7 +53,14 @@ export default function MessageList({ messages, myId, hasMore, loadingOlder, onL
           {dateOf(m.createdAt) !== dateOf(messages[i - 1]?.createdAt) && (
             <div className="msg-date">{dateOf(m.createdAt)}</div>
           )}
-          <MessageItem message={m} mine={m.type === 'text' && m.user?.id === myId} unread={unreadCountOf?.(m) ?? 0} />
+          <MessageItem
+            message={m}
+            mine={m.type === 'text' && m.user?.id === myId}
+            unread={m.deletedAt ? 0 : (unreadCountOf?.(m) ?? 0)}
+            selected={selectedId === m.id}
+            editing={editingId === m.id}
+            ctx={itemCtx}
+          />
         </div>
       ))}
     </div>
