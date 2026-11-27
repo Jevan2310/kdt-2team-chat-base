@@ -33,7 +33,8 @@ export default function MessageInput({ onSend, disabled }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={disabled ? '연결 중…' : '메시지 입력 (Enter 보내기, Shift+Enter 줄바꿈)'}
+          placeholder={disabled ? '연결 중…' : '메시지 입력'}
+          title="Enter 보내기, Shift+Enter 줄바꿈"
           rows={1}
           maxLength={2000}
           disabled={disabled}

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../lib/api.js';
-import { socket } from '../lib/socket.js';
-import { useAuth } from '../auth/useAuth.js';
-import { useUnread } from '../notifications/useUnread.js';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { api } from '../../lib/api.js';
+import { socket } from '../../lib/socket.js';
+import { useAuth } from '../../auth/useAuth.js';
+import { useUnread } from '../../notifications/useUnread.js';
 
-export default function RoomListPage() {
+// 채팅방 목록 (PC: 왼쪽 칸, 모바일: 방을 안 열었을 때 전체 화면)
+export default function RoomSidebar() {
   const { token, user } = useAuth();
   const { counts, syncFromRooms } = useUnread();
   const navigate = useNavigate();
@@ -74,41 +75,41 @@ export default function RoomListPage() {
   };
 
   return (
-    <main className="page">
-      <h1>채팅방</h1>
+    <div className="sidebar">
+      <h1 className="sidebar-title">채팅방</h1>
 
       <form className="room-create" onSubmit={onCreate}>
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="새 채팅방 이름 (예: 개발팀 회의)"
+          placeholder="새 채팅방 이름"
           maxLength={30}
           aria-label="새 채팅방 이름"
         />
         <button type="submit" disabled={creating || !newName.trim()}>만들기</button>
       </form>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error sidebar-error">{error}</p>}
 
       {loading ? (
-        <p>불러오는 중…</p>
+        <p className="muted sidebar-empty">불러오는 중…</p>
       ) : rooms.length === 0 ? (
-        <p className="muted">아직 채팅방이 없어요. 첫 방을 만들어 보세요.</p>
+        <p className="muted sidebar-empty">아직 채팅방이 없어요. 첫 방을 만들어 보세요.</p>
       ) : (
         <ul className="room-list">
           {rooms.map((room) => (
             <li key={room.id}>
-              <Link to={`/rooms/${room.id}`} className="room-item">
+              <NavLink to={`/rooms/${room.id}`} className="room-item">
                 <span className="room-name">{room.name}</span>
                 <span className="room-meta">
                   {counts[room.id] > 0 && <span className="badge-unread">{counts[room.id] > 99 ? '99+' : counts[room.id]}</span>}
                   {room.joined && <span className="badge-joined">참여 중</span>}
                   <span>👥 {room.memberCount}</span>
                 </span>
-              </Link>
+              </NavLink>
             </li>
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

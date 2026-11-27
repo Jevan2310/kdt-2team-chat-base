@@ -6,7 +6,7 @@ import Toasts from './notifications/Toasts.jsx';
 import StatusPage from './pages/StatusPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
-import RoomListPage from './pages/RoomListPage.jsx';
+import ChatLayout, { NoRoomSelected } from './pages/ChatLayout.jsx';
 import ChatRoomPage from './pages/ChatRoomPage.jsx';
 
 export default function App() {
@@ -23,7 +23,10 @@ export default function App() {
         <span className="topnav-right">
           {user ? (
             <>
-              <span className="me">{user.nickname}{user.department && ` · ${user.department}`}</span>
+              <span className="me">
+                {user.nickname}
+                {user.department && <span className="me-dept"> · {user.department}</span>}
+              </span>
               <button type="button" className="link-button" onClick={logout}>로그아웃</button>
             </>
           ) : (
@@ -38,8 +41,10 @@ export default function App() {
         <Route path="/" element={<StatusPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
-        <Route path="/rooms" element={<RequireAuth><RoomListPage /></RequireAuth>} />
-        <Route path="/rooms/:roomId" element={<RequireAuth><ChatRoomPage /></RequireAuth>} />
+        <Route path="/rooms" element={<RequireAuth><ChatLayout /></RequireAuth>}>
+          <Route index element={<NoRoomSelected />} />
+          <Route path=":roomId" element={<ChatRoomPage />} />
+        </Route>
       </Routes>
       {user && <Toasts />}
     </>

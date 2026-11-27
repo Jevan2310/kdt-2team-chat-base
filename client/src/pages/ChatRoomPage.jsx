@@ -159,18 +159,18 @@ function ChatRoom({ id }) {
 
   if (error) {
     return (
-      <main className="page">
+      <div className="no-room">
         <p className="form-error">{error}</p>
         <Link to="/rooms">← 채팅방 목록</Link>
-      </main>
+      </div>
     );
   }
-  if (!room) return <main className="page">불러오는 중…</main>;
+  if (!room) return <div className="no-room">불러오는 중…</div>;
 
   return (
-    <main className="chat-room">
+    <div className="chat-room">
       <header className="room-header">
-        <Link to="/rooms" aria-label="채팅방 목록으로">←</Link>
+        <Link to="/rooms" className="back-link" aria-label="채팅방 목록으로">←</Link>
         <h1>{room.name}</h1>
         <button type="button" className="link-button" onClick={() => setShowMembers((v) => !v)} aria-expanded={showMembers}>
           👥 {members.length}
@@ -202,6 +202,6 @@ function ChatRoom({ id }) {
         unreadCountOf={unreadCountOf}
       />
       <MessageInput onSend={sendMessage} disabled={!connected} />
-    </main>
+    </div>
   );
 }
