@@ -9,7 +9,7 @@ KDT 풀스택 4회차 기본 프로젝트 2팀 · 주제: **실시간 채팅 웹
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | 1 | 폴더 구조, 서버·화면 뼈대, DB 테이블 | ✅ |
-| 2 | 회원가입·로그인 (JWT) | ⏳ |
+| 2 | 회원가입·로그인 (JWT) | ✅ |
 | 3 | 채팅방 만들기·목록·입장 | ⏳ |
 | 4 | 실시간 메시지 + 저장·이전 대화 | ⏳ |
 | 5 | 읽음 숫자 + 안 읽은 개수 알림 | ⏳ |
@@ -23,7 +23,7 @@ KDT 풀스택 4회차 기본 프로젝트 2팀 · 주제: **실시간 채팅 웹
 | 서버 | Node.js + Express 5 (REST API) |
 | 실시간 | Socket.IO (Express와 같은 서버·포트) |
 | DB | MySQL 8.4 (mysql2) |
-| 로그인 | JWT + bcrypt (2단계) |
+| 로그인 | JWT + bcryptjs (토큰은 브라우저 localStorage에 저장) |
 
 ## 폴더 구조
 
@@ -33,13 +33,16 @@ client/                 React 화면 (localhost:5173)
   src/features/         추가 기능 화면을 기능별 폴더로
   src/lib/api.js        REST API 호출 도우미
   src/lib/socket.js     소켓 연결 (앱 전체에서 하나)
+  src/auth/             로그인 상태(AuthProvider, useAuth), 로그인 필요한 화면 보호(RequireAuth)
 server/                 Express + Socket.IO (localhost:3000)
   src/modules/<기능>/   기능별 API (health, auth, rooms, messages …)
+  src/middleware/       requireAuth (로그인 확인)
+  scripts/              테스트 데이터 스크립트
   src/socket/           소켓 이벤트
   src/db.js             MySQL 연결 풀
 db/schema.sql           테이블 (⚠️ 실행하면 기존 데이터 삭제)
 db/seed.sql             기본 데이터 (기본 채팅방 2개)
-docs/                   API·소켓 이벤트 약속 문서
+docs/                   API·소켓 이벤트 약속 문서 → [REST API](docs/REST-API.md)
 ```
 
 ## 실행 방법
@@ -62,8 +65,17 @@ cd server
 cp .env.example .env      # Windows: copy .env.example .env
 # .env 의 DB_USER / DB_PASSWORD 를 내 MySQL 계정으로 고친다 (root 써도 됨)
 npm install
+npm run seed:users        # 테스트 계정 3개 (아래 표)
 npm run dev               # http://localhost:3000/api/health
 ```
+
+| 테스트 계정 | 비밀번호 | 이름 · 부서 |
+|---|---|---|
+| `test1` | `test1234` | 김테스트 · 개발팀 |
+| `test2` | `test1234` | 이테스트 · 디자인팀 |
+| `test3` | `test1234` | 박테스트 · 인사팀 |
+
+(개발용 계정이에요. 실제 서비스에서는 쓰지 않아요.)
 
 ### 4) 화면 (새 터미널)
 ```bash
@@ -72,7 +84,7 @@ npm install
 npm run dev               # http://localhost:5173
 ```
 
-첫 화면에 **서버 ✅ / DB ✅ / 소켓 연결 성공**이 보이면 준비 끝이에요.
+첫 화면에 **서버 ✅ / DB ✅**가 보이고, 로그인하면 **소켓 ✅ 연결**까지 보이면 준비 끝이에요.
 
 ## 추가 기능 붙이는 법
 
@@ -99,3 +111,5 @@ npm run dev               # http://localhost:5173
 | DB ❌ `ER_BAD_DB_ERROR` / `ER_NO_SUCH_TABLE` | `db/schema.sql`을 실행했는지 |
 | 서버 ❌ `요청 실패 (500/504)` | 서버(`npm run dev`)가 켜져 있는지, 포트 3000 |
 | 소켓이 계속 "연결 중…" | 서버가 켜져 있는지, 화면을 5173으로 열었는지 |
+| 소켓 ❌ `unauthorized` | 로그인 토큰이 없거나 만료 → 로그아웃 후 다시 로그인 |
+| 서버를 다시 켜면 모두 로그아웃됨 | `.env`의 `JWT_SECRET`이 없거나 바뀜 → 값을 채워 고정 |

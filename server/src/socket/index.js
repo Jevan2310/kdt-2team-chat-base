@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import { config } from '../config.js';
+import { verifyToken, findUserById } from '../modules/auth/auth.service.js';
 
 // Express와 같은 http 서버에 Socket.IO를 붙인다.
 export function attachSocket(httpServer) {
@@ -7,12 +8,25 @@ export function attachSocket(httpServer) {
     cors: { origin: config.clientOrigin },
   });
 
+  // 연결 전에 로그인 토큰 확인 → 통과하면 socket.data.user 에 사용자 저장
+  io.use(async (socket, next) => {
+    try {
+      const user = await findUserById(verifyToken(socket.handshake.auth?.token));
+      if (!user) return next(new Error('unauthorized'));
+      socket.data.user = user;
+      next();
+    } catch {
+      next(new Error('unauthorized'));
+    }
+  });
+
   io.on('connection', (socket) => {
-    console.log('[socket] 연결:', socket.id);
-    socket.emit('server:hello', { message: '소켓 연결 성공', socketId: socket.id });
+    const { user } = socket.data;
+    console.log('[socket] 연결:', user.username, socket.id);
+    socket.emit('server:hello', { message: `${user.nickname}님 소켓 연결 성공`, socketId: socket.id });
 
     socket.on('disconnect', (reason) => {
-      console.log('[socket] 끊김:', socket.id, reason);
+      console.log('[socket] 끊김:', user.username, reason);
     });
   });
 
