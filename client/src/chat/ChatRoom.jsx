@@ -234,6 +234,7 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
   if (error) {
     return (
       <div className="no-room">
+        <button type="button" className="widget-icon-button no-room-close" onClick={onMinimize} aria-label="채팅 창 내리기">—</button>
         <p className="form-error">{error}</p>
         <button type="button" className="link-button" onClick={onBack}>← 채팅방 목록</button>
       </div>

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { pool } from '../../db.js';
+import { pool, withTx } from '../../db.js';
 import { config } from '../../config.js';
 import { findUserById } from '../auth/auth.service.js';
 
@@ -41,17 +41,26 @@ async function removeAvatarFile(avatarUrl) {
 }
 
 // 새 사진 저장: 파일 이름은 서버가 정한다 (사용자 id + 무작위) → 이름 충돌·경로 조작 방지, 바뀔 때마다 주소가 달라져 캐시 문제 없음
+// 사진 주소 바꾸기: 그 사람 행을 잠그고(FOR UPDATE) 예전 주소를 읽은 뒤 바꾼다
+// → 거의 동시에 두 번 바꿔도 각각 "바로 앞 사진"을 정확히 지워서 주인 없는 파일이 남지 않음
+async function swapAvatarUrl(userId, nextUrl) {
+  const previous = await withTx(async (conn) => {
+    const [[row]] = await conn.query('SELECT avatar_url AS avatarUrl FROM users WHERE id = ? FOR UPDATE', [userId]);
+    await conn.query('UPDATE users SET avatar_url = ? WHERE id = ?', [nextUrl, userId]);
+    return row?.avatarUrl ?? null;
+  });
+  await removeAvatarFile(previous);
+}
+
 export async function saveAvatar(user, buf, ext) {
   await mkdir(AVATAR_DIR, { recursive: true });
   const fileName = `${user.id}-${randomBytes(6).toString('hex')}.${ext}`;
   await writeFile(path.join(AVATAR_DIR, fileName), buf);
-  await pool.query('UPDATE users SET avatar_url = ? WHERE id = ?', [AVATAR_URL_PREFIX + fileName, user.id]);
-  await removeAvatarFile(user.avatarUrl);
+  await swapAvatarUrl(user.id, AVATAR_URL_PREFIX + fileName);
   return findUserById(user.id);
 }
 
 export async function clearAvatar(user) {
-  await pool.query('UPDATE users SET avatar_url = NULL WHERE id = ?', [user.id]);
-  await removeAvatarFile(user.avatarUrl);
+  await swapAvatarUrl(user.id, null);
   return findUserById(user.id);
 }

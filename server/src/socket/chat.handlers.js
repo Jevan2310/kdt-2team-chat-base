@@ -45,6 +45,11 @@ export function registerChatHandlers(io, socket) {
       const id = toId(roomId);
       if (!id || !(await isMember(id, user.id))) return reply(ack, { ok: false, message: '참여한 방이 아니에요.' });
       socket.join(roomKey(id));
+      // 확인과 들어가기 사이에 "나가기"가 끝났을 수 있다 → 한 번 더 확인하고 아니면 다시 뺀다 (나간 방 메시지를 계속 받는 것 방지)
+      if (!(await isMember(id, user.id))) {
+        socket.leave(roomKey(id));
+        return reply(ack, { ok: false, message: '참여한 방이 아니에요.' });
+      }
       reply(ack, { ok: true });
     } catch (err) {
       console.error(err);
