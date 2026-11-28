@@ -6,11 +6,11 @@
 
 | 메서드 | 주소 | 로그인 | 보내는 값 | 받는 값 | 오류 |
 |---|---|---|---|---|---|
-| GET | `/api/health` | — | — | `{ ok, db, rooms, time }` | — |
+| GET | `/api/health` | — | — | `{ ok, db, rooms, time }` | 503 `{ ok: false, db: false, message }` (오류 내용은 서버 로그에만) |
 | POST | `/api/auth/signup` | — | `{ username, password, nickname, department? }` | `201 { token, user }` | 400 입력 규칙, 409 아이디 중복 |
 | POST | `/api/auth/login` | — | `{ username, password }` | `{ token, user }` | 401 아이디·비밀번호 틀림 |
 | GET | `/api/auth/me` | ✅ | — | `{ user }` | 401 토큰 없음·만료 (화면은 401 일 때만 로그아웃, 500·네트워크 오류면 3초 뒤 다시 시도) |
-| PATCH | `/api/users/me` | ✅ | `{ nickname, department? }` | `{ user }` + 소켓 `user:updated` | 400 입력 규칙 |
+| PATCH | `/api/users/me` | ✅ | `{ nickname?, department? }` 보낸 칸만 바뀜 (`department: null` = 부서 없음) | `{ user }` + 소켓 `user:updated` | 400 입력 규칙·바꿀 내용 없음 |
 | PUT | `/api/users/me/avatar` | ✅ | 본문 = 이미지 파일 그대로, `Content-Type: image/jpeg \| image/png \| image/webp` (2MB 이하) | `{ user }` + 소켓 `user:updated` | 400 사진이 아님, 413 너무 큼 |
 | DELETE | `/api/users/me/avatar` | ✅ | — | `{ user }` (`avatarUrl: null`) + 소켓 `user:updated` | — |
 | GET | `/api/departments` | — | — | `{ departments: [{ id, name }] }` | — |

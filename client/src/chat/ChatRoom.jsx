@@ -57,14 +57,17 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
         setNewAfterId(history.messages.at(-1)?.id ?? 0);
         setHasMore(history.hasMore);
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (cancelled) return;
+        // 팝업이 기억하던 방이 지워졌거나 없으면 오류 화면 대신 방 목록으로
+        if (err.status === 404) return onBack();
+        setError(err.message);
       }
     })();
     return () => {
       cancelled = true;
       socket.emit('room:leave', { roomId: id });
     };
-  }, [id, token]);
+  }, [id, token, onBack]);
 
   // 실시간: 새 메시지, 메시지 변경(수정·삭제·반응), 참여자 변화, 소켓 재연결 (연결 상태 표시는 useSocketConnected)
   useEffect(() => {

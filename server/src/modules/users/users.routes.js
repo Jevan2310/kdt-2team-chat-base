@@ -17,9 +17,9 @@ function announce(user) {
   }
 }
 
-// PATCH /api/users/me  { nickname, department? } → { user }
+// PATCH /api/users/me  { nickname?, department? } → { user }  (보낸 칸만 바뀜. department: null 이면 '부서 없음')
 router.patch('/me', async (req, res) => {
-  const error = checkProfile(req.body ?? {});
+  const error = checkProfile(req.body ?? {}, { partial: true });
   if (error) return res.status(400).json({ message: error });
   try {
     const user = await updateProfile(req.user.id, req.body);

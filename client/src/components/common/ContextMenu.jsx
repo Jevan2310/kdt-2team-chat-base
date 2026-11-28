@@ -1,11 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useMenuKeyboard, useRestoreFocus } from './useKeyboardA11y.js';
 
 // 떠 있는 메뉴 (우클릭 메뉴, ⋯ 버튼 메뉴). anchor = { x, y, aboveY?, alignRight? }
 // 화면 밖으로 나가지 않게 자리를 잡고, 밖을 누르거나 Esc·스크롤·창 크기 변경이면 닫힌다.
 export default function ContextMenu({ anchor, onClose, label, children }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
+  useRestoreFocus();
+  useMenuKeyboard(ref, { ready: Boolean(pos), onClose });
 
   useLayoutEffect(() => {
     const { width, height } = ref.current.getBoundingClientRect();

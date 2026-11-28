@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Dialog from '../common/Dialog.jsx';
 
 // 이름 입력 창 (새 폴더, 이름 바꾸기). onSubmit(name) 이 오류 문구를 돌려주면 창에 보여 준다
-export default function NameDialog({ title, initial = '', submitLabel = '확인', onSubmit, onClose }) {
+export default function NameDialog({ title, initial = '', submitLabel = '확인', maxLength = 255, onSubmit, onClose }) {
   const [name, setName] = useState(initial);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -28,7 +28,7 @@ export default function NameDialog({ title, initial = '', submitLabel = '확인'
   return (
     <Dialog title={title} onClose={onClose}>
       <form className="dialog-form" onSubmit={submit}>
-        <input ref={inputRef} value={name} onChange={(e) => setName(e.target.value)} maxLength={255} aria-label="이름" />
+        <input ref={inputRef} value={name} onChange={(e) => setName(e.target.value)} maxLength={maxLength} aria-label="이름" />
         {error && <p className="form-error">{error}</p>}
         <div className="dialog-buttons">
           <button type="button" onClick={onClose}>취소</button>

@@ -12,7 +12,10 @@ export default function StatusPage() {
   const [socketError, setSocketError] = useState('');
 
   useEffect(() => {
-    api('/health').then(setHealth).catch((e) => setError(e.message));
+    // 503 = 서버는 응답했지만 DB 연결 실패
+    api('/health')
+      .then(setHealth)
+      .catch((e) => (e.status === 503 ? setHealth({ db: false, message: e.message }) : setError(e.message)));
   }, []);
 
   useEffect(() => {
@@ -31,7 +34,7 @@ export default function StatusPage() {
       <h1>연결 상태</h1>
       <ul className="status-list">
         <li>서버: {error ? `❌ ${error}` : health ? '✅ 응답' : '…'}</li>
-        <li>DB: {health ? (health.db ? `✅ 연결 (방 ${health.rooms}개)` : `❌ ${health.error}`) : '…'}</li>
+        <li>DB: {health ? (health.db ? `✅ 연결 (방 ${health.rooms}개)` : `❌ ${health.message}`) : '…'}</li>
         <li>로그인: {user ? `✅ ${user.nickname} (${user.department ?? '부서 없음'})` : '로그인 안 함'}</li>
         <li>소켓: {!user ? '로그인하면 연결돼요' : connected ? `✅ 연결 (${socket.id})` : socketError ? `❌ ${socketError}` : '연결 중…'}</li>
       </ul>

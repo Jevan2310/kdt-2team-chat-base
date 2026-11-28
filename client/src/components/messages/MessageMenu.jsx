@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { REACTION_EMOJIS } from './reactions.js';
+import { useMenuKeyboard, useRestoreFocus } from '../common/useKeyboardA11y.js';
 
 // 글자 복사. http 주소(맥미니 IP 등)에서는 navigator.clipboard 가 막혀 있어서 옛 방식으로 한 번 더 시도한다
 async function copyText(text) {
@@ -24,6 +25,8 @@ export default function MessageMenu({ message, mine, anchor, onClose, ctx }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
   const [confirming, setConfirming] = useState(false);
+  useRestoreFocus();
+  useMenuKeyboard(ref, { ready: Boolean(pos) && (confirming ? 'confirm' : 'menu'), onClose });
 
   // 메뉴 크기를 재서 화면 밖으로 나가지 않게 자리를 잡는다 (그리기 전에 계산 → 깜빡임 없음)
   useLayoutEffect(() => {
@@ -57,10 +60,11 @@ export default function MessageMenu({ message, mine, anchor, onClose, ctx }) {
       {confirming ? (
         <>
           <p className="msg-menu-confirm">이 메시지를 삭제할까요?</p>
+          {/* 키보드로 열면 첫 항목에 포커스가 가므로, 실수로 Enter 를 눌러도 지워지지 않게 취소를 먼저 */}
+          <button type="button" role="menuitem" onClick={() => setConfirming(false)}>취소</button>
           <button type="button" role="menuitem" className="danger" onClick={() => run(() => ctx.onDelete(message))}>
             삭제
           </button>
-          <button type="button" role="menuitem" onClick={() => setConfirming(false)}>취소</button>
         </>
       ) : (
         <>

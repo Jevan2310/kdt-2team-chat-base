@@ -332,6 +332,7 @@ export default function DrivePage({ trash = false }) {
       {dialog?.type === 'newFolder' && (
         <NameDialog
           title={folderId === null ? '새 폴더 (맨 위)' : '새 폴더'}
+          maxLength={100}
           submitLabel="만들기"
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {
@@ -345,6 +346,7 @@ export default function DrivePage({ trash = false }) {
         <NameDialog
           title="이름 바꾸기"
           initial={dialog.item.name}
+          maxLength={dialog.item.kind === 'folder' ? 100 : 255}
           submitLabel="바꾸기"
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {

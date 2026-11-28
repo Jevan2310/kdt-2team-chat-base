@@ -17,12 +17,19 @@ export function detectImageType(buf) {
   return null;
 }
 
+// 보낸 칸만 바꾼다 (부서를 안 보냈는데 '부서 없음'이 되던 문제 방지)
 export async function updateProfile(userId, { nickname, department }) {
-  await pool.query('UPDATE users SET nickname = ?, department = ? WHERE id = ?', [
-    nickname.trim(),
-    department?.trim() || null,
-    userId,
-  ]);
+  const sets = [];
+  const values = [];
+  if (nickname !== undefined) {
+    sets.push('nickname = ?');
+    values.push(nickname.trim());
+  }
+  if (department !== undefined) {
+    sets.push('department = ?');
+    values.push(department?.trim() || null);
+  }
+  if (sets.length) await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, [...values, userId]);
   return findUserById(userId);
 }
 
