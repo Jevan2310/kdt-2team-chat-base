@@ -185,7 +185,6 @@ a { color: var(--primary); text-decoration: none; }
 .msg-enter .msg { animation: slide-up-in 0.22s ease-out; }            /* 새 메시지: 아래에서 올라옴 */
 .msg-enter .msg-system { animation: fade-in 0.3s ease-out; }
 .reaction { animation: pop-in 0.2s ease-out; }                         /* 반응 칩: 톡 튀어나옴 */
-.members { animation: slide-down-in 0.18s ease-out; }                  /* 참여자 목록: 위에서 내려옴 */
 .conn-warning { animation: slide-down-in 0.18s ease-out; }
 .msg-edit { animation: fade-in 0.15s ease-out; }
 .dialog-backdrop { animation: fade-in 0.15s ease-out; }
@@ -203,3 +202,8 @@ a { color: var(--primary); text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* 참여자 목록 서랍: 줄 높이 0fr ↔ 1fr 로 전환 → 내용 높이만큼 부드럽게 열리고 닫힘. 아래 대화도 같이 밀려 내려감 */
+.members-drawer { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.28s ease, opacity 0.2s ease; }
+.members-drawer.open { grid-template-rows: 1fr; opacity: 1; }
+.members-drawer-inner { min-height: 0; overflow: hidden; }

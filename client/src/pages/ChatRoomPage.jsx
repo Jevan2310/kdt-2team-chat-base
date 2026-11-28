@@ -225,13 +225,16 @@ function ChatRoom({ id }) {
         <button type="button" className="link-button danger" onClick={onLeave}>나가기</button>
       </header>
 
-      {showMembers && (
-        <section className="members person-list">
-          {members.map((m) => (
-            <PersonRow key={m.id} user={m} size={32} />
-          ))}
-        </section>
-      )}
+      {/* 참여자 목록: 항상 그려 두고 높이만 0 ↔ 내용 높이로 바꿔서 열고 닫을 때 부드럽게 미끄러지게 */}
+      <div className={`members-drawer ${showMembers ? 'open' : ''}`} inert={!showMembers}>
+        <div className="members-drawer-inner">
+          <section className="members person-list" aria-label="참여자">
+            {members.map((m) => (
+              <PersonRow key={m.id} user={m} size={32} />
+            ))}
+          </section>
+        </div>
+      </div>
 
       {!connected && <p className="conn-warning">연결이 끊겼어요. 다시 연결하는 중…</p>}
 
