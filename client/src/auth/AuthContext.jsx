@@ -65,6 +65,20 @@ export function AuthProvider({ children }) {
     [saveLogin],
   );
 
+  // 프로필을 바꿨을 때 (이 탭에서)
+  const updateUser = useCallback((next) => setUser((prev) => (prev ? { ...prev, ...next } : prev)), []);
+
+  // 다른 탭·기기에서 내 프로필을 바꿨을 때도 맞춘다
+  const myId = user?.id;
+  useEffect(() => {
+    if (!myId) return;
+    const onUserUpdated = (changed) => {
+      if (changed.id === myId) updateUser(changed);
+    };
+    socket.on('user:updated', onUserUpdated);
+    return () => socket.off('user:updated', onUserUpdated);
+  }, [myId, updateUser]);
+
   const logout = useCallback(() => {
     writeToken(null);
     setToken(null);
@@ -72,7 +86,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ token, user, loading, login, signup, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

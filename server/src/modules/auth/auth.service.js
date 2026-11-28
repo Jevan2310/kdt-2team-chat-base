@@ -4,7 +4,7 @@ import { pool } from '../../db.js';
 import { config } from '../../config.js';
 
 // 화면에 내보내도 되는 칸만 고른다 (password_hash 는 절대 내보내지 않음)
-const PUBLIC_COLUMNS = 'id, username, nickname, department, role, created_at AS createdAt';
+const PUBLIC_COLUMNS = 'id, username, nickname, department, role, avatar_url AS avatarUrl, created_at AS createdAt';
 
 export async function findUserById(id) {
   const [rows] = await pool.query(`SELECT ${PUBLIC_COLUMNS} FROM users WHERE id = ?`, [id]);

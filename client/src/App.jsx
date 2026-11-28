@@ -8,6 +8,8 @@ import LoginPage from './pages/LoginPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
 import ChatLayout, { NoRoomSelected } from './pages/ChatLayout.jsx';
 import ChatRoomPage from './pages/ChatRoomPage.jsx';
+import ProfilePage from './pages/ProfilePage.jsx';
+import Avatar from './components/users/Avatar.jsx';
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -23,10 +25,13 @@ export default function App() {
         <span className="topnav-right">
           {user ? (
             <>
-              <span className="me">
-                {user.nickname}
-                {user.department && <span className="me-dept"> · {user.department}</span>}
-              </span>
+              <Link to="/profile" className="me" title="내 프로필">
+                <Avatar user={user} size={26} />
+                <span>
+                  {user.nickname}
+                  {user.department && <span className="me-dept"> · {user.department}</span>}
+                </span>
+              </Link>
               <button type="button" className="link-button" onClick={logout}>로그아웃</button>
             </>
           ) : (
@@ -41,6 +46,7 @@ export default function App() {
         <Route path="/" element={<StatusPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
         <Route path="/rooms" element={<RequireAuth><ChatLayout /></RequireAuth>}>
           <Route index element={<NoRoomSelected />} />
           <Route path=":roomId" element={<ChatRoomPage />} />

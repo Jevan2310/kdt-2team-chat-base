@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 // 환경 변수(.env)를 한곳에서 읽는다. 값이 없으면 개발용 기본값을 쓴다.
 export const config = {
   port: Number(process.env.PORT ?? 3000),
@@ -10,4 +12,6 @@ export const config = {
     database: process.env.DB_NAME ?? 'team_chat',
   },
   jwtSecret: process.env.JWT_SECRET ?? 'dev-only-secret-change-me',
+  // 올린 파일(프로필 사진 등)을 저장하는 폴더: server/uploads (GitHub에 올리지 않음)
+  uploadsDir: process.env.UPLOADS_DIR ?? fileURLToPath(new URL('../uploads', import.meta.url)),
 };

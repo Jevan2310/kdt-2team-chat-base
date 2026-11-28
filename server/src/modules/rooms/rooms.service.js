@@ -33,7 +33,7 @@ export async function findRoom(roomId) {
 
 export async function listMembers(roomId) {
   const [rows] = await pool.query(
-    `SELECT u.id, u.nickname, u.department, u.role, m.joined_at AS joinedAt,
+    `SELECT u.id, u.nickname, u.department, u.role, u.avatar_url AS avatarUrl, m.joined_at AS joinedAt,
             m.last_read_message_id AS lastReadMessageId
        FROM room_members m
        JOIN users u ON u.id = m.user_id

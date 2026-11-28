@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createUser, checkLogin, signToken } from './auth.service.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
+import { checkProfile } from '../users/users.rules.js';
 
 const router = Router();
 
@@ -9,9 +10,7 @@ const USERNAME_RULE = /^[a-z0-9_]{4,20}$/;
 function validateSignup({ username, password, nickname, department }) {
   if (!USERNAME_RULE.test(username ?? '')) return '아이디는 영어 소문자·숫자·_ 4~20자예요.';
   if (typeof password !== 'string' || password.length < 6) return '비밀번호는 6자 이상이에요.';
-  if (typeof nickname !== 'string' || !nickname.trim() || nickname.trim().length > 20) return '이름은 1~20자예요.';
-  if (department != null && String(department).length > 50) return '부서는 50자 이하예요.';
-  return null;
+  return checkProfile({ nickname, department });
 }
 
 // POST /api/auth/signup  { username, password, nickname, department? } → { token, user }

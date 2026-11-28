@@ -10,9 +10,12 @@
 | POST | `/api/auth/signup` | — | `{ username, password, nickname, department? }` | `201 { token, user }` | 400 입력 규칙, 409 아이디 중복 |
 | POST | `/api/auth/login` | — | `{ username, password }` | `{ token, user }` | 401 아이디·비밀번호 틀림 |
 | GET | `/api/auth/me` | ✅ | — | `{ user }` | 401 토큰 없음·만료 |
+| PATCH | `/api/users/me` | ✅ | `{ nickname, department? }` | `{ user }` + 소켓 `user:updated` | 400 입력 규칙 |
+| PUT | `/api/users/me/avatar` | ✅ | 본문 = 이미지 파일 그대로, `Content-Type: image/jpeg \| image/png \| image/webp` (2MB 이하) | `{ user }` + 소켓 `user:updated` | 400 사진이 아님, 413 너무 큼 |
+| DELETE | `/api/users/me/avatar` | ✅ | — | `{ user }` (`avatarUrl: null`) + 소켓 `user:updated` | — |
 | GET | `/api/rooms` | ✅ | — | `{ rooms: [{ id, name, type, createdAt, memberCount, joined, unreadCount }] }` | — |
 | POST | `/api/rooms` | ✅ | `{ name }` (1~30자) | `201 { room }` + 소켓 `room:created` | 400 이름 규칙 |
-| GET | `/api/rooms/:roomId` | ✅ | — | `{ room, members: [{ id, nickname, department, role, joinedAt, lastReadMessageId }], joined }` | 404 없는 방 |
+| GET | `/api/rooms/:roomId` | ✅ | — | `{ room, members: [{ id, nickname, department, role, avatarUrl, joinedAt, lastReadMessageId }], joined }` | 404 없는 방 |
 | POST | `/api/rooms/:roomId/join` | ✅ | — | `{ joined: true, isNew }` + 처음이면 소켓 `room:members` | 404 |
 | POST | `/api/rooms/:roomId/leave` | ✅ | — | `{ left }` + 소켓 `room:members` | 404 |
 | GET | `/api/rooms/:roomId/messages?before=&limit=` | ✅ 참여자만 | `before`: 이 메시지 id보다 이전 (없으면 최근), `limit`: 1~100 (기본 50) | `{ messages, hasMore }` (오래된 것 → 최근 순) | 403 참여 안 함, 404 |
@@ -20,13 +23,20 @@
 ## user 모양
 
 ```json
-{ "id": 1, "username": "test1", "nickname": "김테스트", "department": "개발팀", "role": "user", "createdAt": "2026-11-27 12:56:34" }
+{ "id": 1, "username": "test1", "nickname": "김테스트", "department": "개발팀", "role": "user",
+  "avatarUrl": "/uploads/avatars/1-3f9a0c2b7d1e.jpg", "createdAt": "2026-11-27 12:56:34" }
 ```
 
 ## 입력 규칙
 - `username`: 영어 소문자·숫자·`_` 4~20자, 중복 불가
 - `password`: 6자 이상 (DB에는 bcrypt로 암호화해서 저장)
-- `nickname`: 1~20자 · `department`: 선택, 50자 이하
+- `nickname`: 1~20자 · `department`: 선택, 50자 이하 (회원가입·프로필 수정 공통, `modules/users/users.rules.js`)
+
+## 프로필 사진 규칙
+- `avatarUrl`: 없으면 `null` → 화면은 이름 첫 글자 + id별 색으로 그림
+- 서버는 파일 앞부분(매직 넘버)으로 JPG·PNG·WEBP인지 확인한다. 파일 이름·`Content-Type`은 믿지 않는다
+- 파일 이름은 서버가 정한다 (`<사용자 id>-<무작위>.jpg`). 바꿀 때마다 주소가 달라져 브라우저 캐시 문제가 없고, 예전 파일은 지운다
+- 저장 위치 `server/uploads/avatars/`, 주소 `/uploads/avatars/…` (개발 중엔 Vite 프록시가 서버로 넘김). `X-Content-Type-Options: nosniff`로 내려준다
 
 ## message 모양
 

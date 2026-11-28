@@ -9,7 +9,7 @@ export const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'
 const SELECT_MESSAGE = `
   SELECT m.id, m.room_id AS roomId, m.type, m.content, m.metadata, m.created_at AS createdAt,
          m.edited_at AS editedAt, m.deleted_at AS deletedAt,
-         u.id AS userId, u.nickname, u.department, u.role
+         u.id AS userId, u.nickname, u.department, u.role, u.avatar_url AS avatarUrl
     FROM messages m
     LEFT JOIN users u ON u.id = m.user_id`;
 
@@ -25,7 +25,9 @@ function toMessage(row, reactions = []) {
     editedAt: row.editedAt,
     deletedAt: row.deletedAt,
     reactions, // [{ emoji: '👍', userIds: [1, 3] }] — 먼저 누른 순서
-    user: row.userId ? { id: row.userId, nickname: row.nickname, department: row.department, role: row.role } : null,
+    user: row.userId
+      ? { id: row.userId, nickname: row.nickname, department: row.department, role: row.role, avatarUrl: row.avatarUrl }
+      : null,
   };
 }
 

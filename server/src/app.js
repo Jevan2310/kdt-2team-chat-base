@@ -4,6 +4,7 @@ import { config } from './config.js';
 import healthRoutes from './modules/health/health.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import roomRoutes from './modules/rooms/rooms.routes.js';
+import userRoutes from './modules/users/users.routes.js';
 
 export const app = express();
 
@@ -14,12 +15,23 @@ app.use(express.json());
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
+app.use('/api/users', userRoutes);
+
+// 올린 파일(프로필 사진). nosniff: 브라우저가 내용을 보고 다른 형식(HTML 등)으로 해석하지 못하게
+app.use(
+  '/uploads',
+  express.static(config.uploadsDir, {
+    index: false,
+    setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff'),
+  }),
+);
 
 // 없는 주소
 app.use('/api', (req, res) => res.status(404).json({ message: '없는 API 주소예요.' }));
 
 // 처리 못 한 오류 (Express 5는 async 함수의 오류도 여기로 온다)
 app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large') return res.status(413).json({ message: '파일이 너무 커요. 2MB 이하로 올려 주세요.' });
   console.error(err);
   res.status(500).json({ message: '서버 오류가 났어요.' });
 });

@@ -20,6 +20,7 @@ CREATE TABLE users (
   nickname      VARCHAR(30)  NOT NULL,                     -- 화면에 보이는 이름
   department    VARCHAR(50)  NULL,                         -- 부서 (사내 채팅)
   role          VARCHAR(20)  NOT NULL DEFAULT 'user',      -- 확장 칸: user / admin / bot …
+  avatar_url    VARCHAR(255) NULL,                         -- 프로필 사진 주소 (/uploads/avatars/…). 없으면 이름 첫 글자
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

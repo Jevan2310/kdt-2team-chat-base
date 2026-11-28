@@ -92,13 +92,25 @@ function ChatRoom({ id }) {
       if (history) setMessages((prev) => mergeMessages(prev, history.messages));
     };
 
+    // 누가 프로필(이름·부서·사진)을 바꿨으면 참여자 목록과 메시지의 보낸 사람 정보를 바꿔 끼운다
+    const onUserUpdated = (changed) => {
+      setMembers((prev) => prev.map((m) => (m.id === changed.id ? { ...m, ...changed } : m)));
+      setMessages((prev) =>
+        prev.some((m) => m.user?.id === changed.id)
+          ? prev.map((m) => (m.user?.id === changed.id ? { ...m, user: { ...m.user, ...changed } } : m))
+          : prev,
+      );
+    };
+
     socket.on('message:new', onNew);
+    socket.on('user:updated', onUserUpdated);
     socket.on('message:updated', onNew);
     socket.on('room:members', onMembers);
     socket.on('read:update', onReadUpdate);
     socket.on('connect', onConnect);
     return () => {
       socket.off('message:new', onNew);
+      socket.off('user:updated', onUserUpdated);
       socket.off('message:updated', onNew);
       socket.off('room:members', onMembers);
       socket.off('read:update', onReadUpdate);
