@@ -315,7 +315,7 @@ export default function DrivePage({ trash = false }) {
       <p><strong>왼쪽에서 파일을 고르면 여기에서 열려요</strong></p>
       <ul className="muted">
         <li>{MOD} 또는 {ALT} 누른 채 파일 클릭 → 오른쪽에 나란히</li>
-        <li>탭 바의 ▥ · {SPLIT_RIGHT} → 오른쪽으로 나누기, ▤ · {SPLIT_DOWN} → 아래로 나누기 (최대 6칸)</li>
+        <li>탭 바의 ▥ 또는 {SPLIT_RIGHT} 으로 오른쪽 나누기, ▤ 또는 {SPLIT_DOWN} 으로 아래로 나누기 (최대 6칸)</li>
         <li>탭이나 파일을 칸의 위·아래·왼쪽·오른쪽 끝으로 끌면 그쪽에 새 칸</li>
         <li>칸 사이 경계선을 끌면 크기 조절</li>
         <li>컴퓨터의 파일을 왼쪽 폴더에 끌어다 놓으면 올리기</li>
