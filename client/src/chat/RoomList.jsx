@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { api } from '../../lib/api.js';
-import { socket } from '../../lib/socket.js';
-import { useAuth } from '../../auth/useAuth.js';
-import { useUnread } from '../../notifications/useUnread.js';
+import { api } from '../lib/api.js';
+import { socket } from '../lib/socket.js';
+import { useAuth } from '../auth/useAuth.js';
+import { useUnread } from '../notifications/useUnread.js';
 
-// 채팅방 목록 (PC: 왼쪽 칸, 모바일: 방을 안 열었을 때 전체 화면)
-export default function RoomSidebar() {
+// 채팅방 목록 (채팅 팝업 첫 화면). 방을 누르면 onSelect(방 id)
+export default function RoomList({ onSelect }) {
   const { token, user } = useAuth();
   const { counts, syncFromRooms } = useUnread();
-  const navigate = useNavigate();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -66,7 +64,7 @@ export default function RoomSidebar() {
     try {
       const { room } = await api('/rooms', { method: 'POST', body: { name }, token });
       setNewName('');
-      navigate(`/rooms/${room.id}`);
+      onSelect(room.id);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -76,8 +74,6 @@ export default function RoomSidebar() {
 
   return (
     <div className="sidebar">
-      <h1 className="sidebar-title">채팅방</h1>
-
       <form className="room-create" onSubmit={onCreate}>
         <input
           value={newName}
@@ -98,14 +94,14 @@ export default function RoomSidebar() {
         <ul className="room-list">
           {rooms.map((room) => (
             <li key={room.id}>
-              <NavLink to={`/rooms/${room.id}`} className="room-item">
+              <button type="button" className="room-item" onClick={() => onSelect(room.id)}>
                 <span className="room-name">{room.name}</span>
                 <span className="room-meta">
                   {counts[room.id] > 0 && <span className="badge-unread">{counts[room.id] > 99 ? '99+' : counts[room.id]}</span>}
                   {room.joined && <span className="badge-joined">참여 중</span>}
                   <span>👥 {room.memberCount}</span>
                 </span>
-              </NavLink>
+              </button>
             </li>
           ))}
         </ul>

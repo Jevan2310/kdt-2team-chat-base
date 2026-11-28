@@ -1,29 +1,23 @@
-import { Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { useAuth } from './auth/useAuth.js';
 import RequireAuth from './auth/RequireAuth.jsx';
-import { useUnread } from './notifications/useUnread.js';
 import Toasts from './notifications/Toasts.jsx';
 import StatusPage from './pages/StatusPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
-import ChatLayout, { NoRoomSelected } from './pages/ChatLayout.jsx';
-import ChatRoomPage from './pages/ChatRoomPage.jsx';
+import ChatWidget from './chat/ChatWidget.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import DrivePage from './pages/DrivePage.jsx';
 import Avatar from './components/users/Avatar.jsx';
 
 export default function App() {
   const { user, logout } = useAuth();
-  const { total } = useUnread();
 
   return (
     <>
       <nav className="topnav">
-        <Link to="/">상태</Link>
-        <Link to="/rooms">
-          채팅방{total > 0 && <span className="badge-unread" aria-label={`안 읽은 메시지 ${total}개`}>{total > 99 ? '99+' : total}</span>}
-        </Link>
-        <Link to="/drive">드라이브</Link>
+        <NavLink to="/drive" className="brand">📁 사내 드라이브</NavLink>
+        <NavLink to="/status">상태</NavLink>
         <span className="topnav-right">
           {user ? (
             <>
@@ -45,19 +39,20 @@ export default function App() {
         </span>
       </nav>
       <Routes>
-        <Route path="/" element={<StatusPage />} />
+        {/* 메인 = 드라이브. 채팅은 어느 화면에서든 오른쪽 아래 팝업 (ChatWidget) */}
+        <Route path="/" element={<Navigate to="/drive" replace />} />
+        <Route path="/status" element={<StatusPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
         <Route path="/drive" element={<RequireAuth><DrivePage /></RequireAuth>} />
         <Route path="/drive/trash" element={<RequireAuth><DrivePage key="trash" trash /></RequireAuth>} />
         <Route path="/drive/:folderId" element={<RequireAuth><DrivePage /></RequireAuth>} />
-        <Route path="/rooms" element={<RequireAuth><ChatLayout /></RequireAuth>}>
-          <Route index element={<NoRoomSelected />} />
-          <Route path=":roomId" element={<ChatRoomPage />} />
-        </Route>
+        {/* 예전 채팅 페이지 주소로 오면 드라이브로 */}
+        <Route path="/rooms/*" element={<Navigate to="/drive" replace />} />
       </Routes>
       {user && <Toasts />}
+      <ChatWidget />
     </>
   );
 }

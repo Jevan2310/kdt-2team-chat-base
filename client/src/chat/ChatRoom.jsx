@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { socket, useSocketConnected } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
@@ -18,15 +17,10 @@ function mergeMessages(...lists) {
 // 소켓 emit 을 await 할 수 있게 (서버가 ack 로 답함)
 const emitWithAck = (event, data) => new Promise((resolve) => socket.emit(event, data, resolve));
 
-// 방 주소가 바뀌면(key 변경) 화면 상태를 처음부터 새로 만든다
-export default function ChatRoomPage() {
-  const { roomId } = useParams();
-  return <ChatRoom key={roomId} id={Number(roomId)} />;
-}
-
-function ChatRoom({ id }) {
+// 채팅 팝업 안의 대화 화면. 방이 바뀌면 부모가 key 를 바꿔 화면 상태를 처음부터 새로 만든다.
+// onBack: 방 목록으로, onMinimize: 팝업 내리기
+export default function ChatRoom({ id, onBack, onMinimize }) {
   const { token, user } = useAuth();
-  const navigate = useNavigate();
   const [room, setRoom] = useState(null);
   const [members, setMembers] = useState([]);
   const [showMembers, setShowMembers] = useState(false);
@@ -198,7 +192,7 @@ function ChatRoom({ id }) {
   const onLeave = async () => {
     try {
       await api(`/rooms/${id}/leave`, { method: 'POST', token });
-      navigate('/rooms');
+      onBack();
     } catch (err) {
       setError(err.message);
     }
@@ -208,7 +202,7 @@ function ChatRoom({ id }) {
     return (
       <div className="no-room">
         <p className="form-error">{error}</p>
-        <Link to="/rooms">← 채팅방 목록</Link>
+        <button type="button" className="link-button" onClick={onBack}>← 채팅방 목록</button>
       </div>
     );
   }
@@ -217,12 +211,13 @@ function ChatRoom({ id }) {
   return (
     <div className="chat-room">
       <header className="room-header">
-        <Link to="/rooms" className="back-link" aria-label="채팅방 목록으로">←</Link>
+        <button type="button" className="back-link" onClick={onBack} aria-label="채팅방 목록으로">←</button>
         <h1>{room.name}</h1>
         <button type="button" className="link-button" onClick={() => setShowMembers((v) => !v)} aria-expanded={showMembers}>
           👥 {members.length}
         </button>
         <button type="button" className="link-button danger" onClick={onLeave}>나가기</button>
+        <button type="button" className="widget-icon-button" onClick={onMinimize} aria-label="채팅 창 내리기">—</button>
       </header>
 
       {/* 참여자 목록: 항상 그려 두고 높이만 0 ↔ 내용 높이로 바꿔서 열고 닫을 때 부드럽게 미끄러지게 */}

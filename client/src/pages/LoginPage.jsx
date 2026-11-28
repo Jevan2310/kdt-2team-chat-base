@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const goTo = location.state?.from ?? '/rooms';
+  const goTo = location.state?.from ?? '/drive';
   if (user) return <Navigate to={goTo} replace />;
 
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));

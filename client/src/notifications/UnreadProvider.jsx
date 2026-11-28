@@ -1,30 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { socket } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
 import { UnreadContext } from './useUnread.js';
+import { useChatWidget } from '../chat/useChatWidget.js';
 
 const TOAST_MS = 4000;
-const BASE_TITLE = '사내 채팅';
+const BASE_TITLE = '사내 드라이브';
 
-// 지금 이 방 화면을 보고 있나? (주소가 /rooms/3 이고 탭이 화면에 보일 때)
-function isViewing(pathname, roomId) {
-  return pathname === `/rooms/${roomId}` && document.visibilityState === 'visible';
+// 지금 이 방을 보고 있나? (채팅 팝업에 그 방이 떠 있고 탭이 화면에 보일 때)
+function isViewing(activeRoomId, roomId) {
+  return activeRoomId === roomId && document.visibilityState === 'visible';
 }
 
 export function UnreadProvider({ children }) {
   const { token } = useAuth();
-  const location = useLocation();
-  const pathRef = useRef(location.pathname);
+  const { activeRoomId } = useChatWidget();
+  const activeRef = useRef(activeRoomId);
   const [counts, setCounts] = useState({}); // { 방 id: 안 읽은 개수 }
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
-    pathRef.current = location.pathname;
-  }, [location.pathname]);
+    activeRef.current = activeRoomId;
+  }, [activeRoomId]);
 
-  // 방 목록을 받으면 개수 맞추기 (로그인할 때, 방 목록 화면을 열 때)
+  // 방 목록을 받으면 개수 맞추기 (로그인할 때, 채팅 팝업의 방 목록을 열 때)
   const syncFromRooms = useCallback((rooms) => {
     setCounts(Object.fromEntries(rooms.map((r) => [r.id, r.unreadCount ?? 0])));
   }, []);
@@ -41,7 +41,7 @@ export function UnreadProvider({ children }) {
   useEffect(() => {
     // 새 메시지 알림: 그 방을 보고 있지 않으면 개수 +1, 토스트 띄우기
     const onNotify = ({ roomId, roomName, message }) => {
-      if (isViewing(pathRef.current, roomId)) return;
+      if (isViewing(activeRef.current, roomId)) return;
       setCounts((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
       const toast = { id: message.id, roomId, roomName, author: message.user?.nickname, content: message.content };
       setToasts((prev) => [...prev.slice(-2), toast]); // 최대 3개

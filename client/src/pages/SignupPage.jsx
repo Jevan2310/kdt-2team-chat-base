@@ -11,7 +11,7 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const departments = useDepartments();
 
-  if (user) return <Navigate to="/rooms" replace />;
+  if (user) return <Navigate to="/drive" replace />;
 
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
@@ -26,7 +26,7 @@ export default function SignupPage() {
     try {
       const { passwordCheck: _, ...body } = form;
       await signup({ ...body, username: body.username.trim(), department: body.department || null });
-      navigate('/rooms', { replace: true });
+      navigate('/drive', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
