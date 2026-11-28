@@ -39,6 +39,7 @@ export default function PdfEditor({ blob, readOnly, saverRef, onDirty }) {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
   const docRef = useRef(null);
+  const fitRef = useRef(true); // 쪽 너비에 맞춤 중 (＋/－ 로 직접 바꾸면 해제)
   const [mode, setMode] = useState(AnnotationEditorType.NONE);
   const [pages, setPages] = useState({ now: 1, total: 0 });
   const [error, setError] = useState('');
@@ -47,6 +48,7 @@ export default function PdfEditor({ blob, readOnly, saverRef, onDirty }) {
   useEffect(() => {
     let cancelled = false;
     let task;
+    let resizeObserver;
     (async () => {
       const { EventBus, PDFLinkService, PDFViewer } = await loadViewer();
       if (cancelled) return;
@@ -63,6 +65,11 @@ export default function PdfEditor({ blob, readOnly, saverRef, onDirty }) {
       eventBus.on('pagesinit', () => {
         viewer.currentScaleValue = 'page-width';
       });
+      // 칸을 나누거나 너비를 바꾸면 다시 쪽 너비에 맞춤
+      resizeObserver = new ResizeObserver(() => {
+        if (fitRef.current && viewer.pdfDocument && containerRef.current?.clientWidth) viewer.currentScaleValue = 'page-width'; // 숨긴 탭(너비 0)은 건너뜀
+      });
+      resizeObserver.observe(containerRef.current);
       eventBus.on('pagechanging', (e) => setPages((p) => ({ ...p, now: e.pageNumber })));
       task = pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) });
       const doc = await task.promise;
@@ -75,6 +82,7 @@ export default function PdfEditor({ blob, readOnly, saverRef, onDirty }) {
     })().catch((err) => !cancelled && setError(`이 PDF 를 열지 못했어요. (${err?.message ?? err})`));
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
       task?.destroy();
       docRef.current = null;
       viewerRef.current = null;
@@ -100,6 +108,7 @@ export default function PdfEditor({ blob, readOnly, saverRef, onDirty }) {
   };
   const zoom = (factor) => {
     const viewer = viewerRef.current;
+    fitRef.current = false;
     if (viewer) viewer.currentScale = Math.min(4, Math.max(0.25, viewer.currentScale * factor));
   };
 

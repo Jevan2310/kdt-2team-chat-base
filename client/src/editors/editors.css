@@ -25,3 +25,60 @@
 .pdf-container { position: absolute; inset: 0; overflow: auto; }   /* PDF.js 는 감싸는 칸이 absolute 여야 함 */
 /* 앱의 .page(가운데 720px 칸) 규칙이 PDF 쪽(.pdfViewer .page)에 붙지 않게 → PDF.js 층의 값으로 되돌림 */
 .pdf-container .page { max-width: revert-layer; margin: revert-layer; padding: revert-layer; }
+
+/* ── 가운데 편집 영역: 칸(group) 나란히 + 탭 (VS Code 처럼) ── */
+.editor-area { flex: 1; min-height: 0; display: flex; }
+.editor-group-wrap { position: relative; flex-basis: 0; min-width: 0; display: flex; }
+.group-splitter { width: 5px; margin-left: -3px; flex-shrink: 0; cursor: col-resize; z-index: 2; touch-action: none; border-left: 1px solid var(--border); }
+.group-splitter:hover, .group-splitter:active { background: rgb(59 111 216 / 0.35); }
+.editor-group { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface); }
+.tab-bar { display: flex; align-items: stretch; min-height: 36px; background: #f3f4f6; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
+.tab-bar.drop-target { background: #e4ecfb; }
+.tab-bar-fill { flex: 1; min-width: 12px; }
+.tab-bar-button { flex-shrink: 0; border: none; background: none; padding: 0 10px; font-size: 16px; color: var(--muted); cursor: pointer; }
+.tab-bar-button:hover { color: var(--text); background: #e7e9ed; }
+.tab { display: flex; align-items: center; gap: 6px; max-width: 220px; padding: 0 6px 0 12px; border-right: 1px solid var(--border); font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; white-space: nowrap; animation: fade-in 0.15s ease-out; }
+.tab:hover { background: #eceef2; }
+.tab.active { background: var(--surface); color: var(--text); box-shadow: inset 0 -2px 0 transparent; }
+.editor-group.focused .tab.active { box-shadow: inset 0 2px 0 var(--primary); }
+.tab.missing .tab-label { text-decoration: line-through; }
+.tab-label { overflow: hidden; text-overflow: ellipsis; }
+.tab-close { position: relative; width: 20px; height: 20px; flex-shrink: 0; border: none; background: none; border-radius: 4px; padding: 0; color: inherit; cursor: pointer; font-size: 11px; }
+.tab-close:hover { background: #dfe2e7; }
+.tab-close .dot { display: none; font-size: 10px; }
+.tab-close .x { visibility: hidden; }
+.tab:hover .tab-close .x, .tab.active .tab-close .x { visibility: visible; }
+.tab-close.dirty .dot { display: inline; }
+.tab-close.dirty .x { display: none; }
+.tab-close.dirty:hover .dot { display: none; }
+.tab-close.dirty:hover .x { display: inline; visibility: visible; }
+.group-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tab-panel[hidden] { display: none; }
+.editor-empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+.welcome { max-width: 420px; color: var(--text); }
+.welcome-icon { font-size: 44px; margin-bottom: 8px; }
+.welcome ul { text-align: left; font-size: 13px; line-height: 1.9; padding-left: 18px; }
+.drop-zone { position: absolute; top: 6px; bottom: 6px; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--primary); border-radius: 10px; background: rgb(59 111 216 / 0.1); color: var(--primary); font-weight: 700; pointer-events: none; animation: fade-in 0.12s ease-out; z-index: 5; }
+.drop-zone.center { left: 6px; right: 6px; }
+.drop-zone.right { left: 50%; right: 6px; }
+
+.viewer-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewer-banner { margin: 0; padding: 6px 12px; font-size: 13px; background: #fff6e0; border-bottom: 1px solid #f1dfae; }
+.viewer-actions button { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font: inherit; font-size: 13px; cursor: pointer; }
+.viewer-actions button.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.viewer-actions button:disabled { opacity: 0.5; cursor: default; }
+.no-preview { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 24px; text-align: center; }
+.no-preview-icon { font-size: 52px; }
+.no-preview p { margin: 0; }
+.primary-button { margin-top: 8px; padding: 8px 16px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.trash-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.trash-header { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; flex-wrap: wrap; }
+
+/* 휴대폰: 칸은 지금 보는 것 하나만 (나누기 없음) */
+@media (max-width: 767px) {
+  .editor-group-wrap:not(.focused) { display: none; }
+  .editor-group-wrap { flex-grow: 1 !important; }
+  .group-splitter { display: none; }
+  .viewer-header { gap: 6px; }
+}

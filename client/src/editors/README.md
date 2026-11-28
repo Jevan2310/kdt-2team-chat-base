@@ -17,9 +17,25 @@
 
 그 밖의 파일은 예전처럼 누르면 내려받는다.
 
+## 화면 (VS Code 처럼)
+- 왼쪽 **탐색기**: 폴더와 파일을 한 나무로. 폴더를 펼치면 그 폴더 파일만 받아 옴. 너비 조절(경계선 끌기)
+  - 위 버튼: ＋📁 새 폴더 · ⬆ 올리기(고른 폴더에) · ⟳ 새로 고침 · ⊟ 모두 접기
+  - 우클릭/⋯ 메뉴: 폴더 = 새 폴더·올리기·이름·옮기기·권한·휴지통 / 파일 = 열기·오른쪽에 열기·내려받기·이름·옮기기·휴지통
+  - 컴퓨터의 파일을 폴더 줄에 끌어다 놓으면 그 폴더에 올리기
+- 가운데 **편집 칸**: 파일 목록 없이 연 파일만. 탭 여러 개, 칸 최대 3개 나란히
+  - 나누기: 탭 바 ⫿ · Ctrl+\ · Ctrl(⌘)/Alt+클릭 · 탭이나 트리 파일을 칸 오른쪽 끝(30%)에 놓기
+  - 탭 끌어서 다른 칸으로 옮기기·순서 바꾸기, 가운데 클릭으로 닫기, 우클릭 메뉴(닫기·다른 탭 닫기·오른쪽에 열기)
+  - 저장 안 한 탭은 ● 표시, 닫을 때 확인. 저장 안 한 탭은 다른 칸으로 못 옮김(내용 사라짐 방지)
+  - 열어 둔 탭·칸·너비는 사람별로 브라우저에 기억 (새로 고침해도 그대로)
+  - 휴지통도 탭으로 열림
+- 휴대폰: 탐색기와 편집 칸 중 하나만 (☰ 로 탐색기), 칸 나누기 없음
+
 ## 구조
 - `registry.js` — 확장자 → 편집기. 각 편집기는 처음 열 때만 내려받는다 (드라이브 첫 화면은 가벼움)
-- `FileViewer.jsx` — 가운데 화면 틀: 열기(서명 주소), 저장(Ctrl+S), 저장 안 하고 닫기 확인, 보기 전용 표시, 편집기 오류 막기
+- `useEditorLayout.js` — 칸·탭 배치 상태 (열기·닫기·옮기기·나누기·너비) + 브라우저에 기억
+- `EditorArea.jsx` — 칸·탭 화면, 끌어다 놓기, 경계선 끌기, 저장 안 한 탭 닫기 확인
+- `FileViewer.jsx` — 탭 하나의 내용: 열기(서명 주소), 저장(Ctrl+S, 보고 있는 탭만), 보기 전용 표시, 다른 사람이 저장하면 알림(새 내용 불러오기), 미리보기 없는 형식은 정보+내려받기, 편집기 오류 막기
+- 왼쪽 탐색기: `components/drive/Explorer.jsx`, 휴지통 탭: `components/drive/TrashView.jsx`
 - 편집기 약속: props `blob, file, readOnly, saverRef, onDirty` — 고치면 `onDirty()`, `saverRef.current = async () => Blob`
 - 서버: `server/src/modules/drive/content.routes.js` — `PUT /api/drive/files/:id/content` (편집 권한, 판 확인으로 덮어쓰기 방지, DB 바뀜 없음)
 
@@ -31,14 +47,15 @@
 - pptx-preview 가 쓰는 echarts·uuid 에 npm audit 보통(moderate) 경고가 있음
 
 ## 끄기 (코드는 그대로)
-`client/.env.local` 에 `VITE_EDITORS=off` → 파일을 누르면 예전처럼 내려받기. 서버 API 는 남아 있어도 화면에서 안 부름.
+`client/.env.local` 에 `VITE_EDITORS=off` → 탭에서 파일 정보 + 내려받기만 (편집기 라이브러리를 안 부름). 탐색기·탭·나누기는 그대로.
 
 ## 버리기
 브랜치째 버리면 끝: `git switch main && git branch -D try/editor-a` (main 에는 아무것도 안 들어가 있음)
+- 주의: 이 브랜치에는 **탐색기(파일까지 보이는 트리)·탭·화면 나누기**도 들어 있어서 같이 사라진다. 편집기만 버리고 화면 구조는 남기려면 `VITE_EDITORS=off` 로 끄거나, 아래 4번(패키지)·편집기 파일만 지우고 `registry.js` 의 KINDS 를 비운다
 
 main 에 합친 뒤에 버린다면:
 1. `client/src/editors/` 폴더 삭제
-2. `client/src/pages/DrivePage.jsx` 에서 `[편집기 시험판 A]` 표시 줄 되돌리기 (import 2줄, `useSearchParams`, `openFile`/`closeFile`, `openId`/`openedFile`, `<FileViewer>` 부분, 메뉴의 👁️ 열기, 파일 이름 버튼의 `openFile`)
+2. `client/src/pages/DrivePage.jsx`·`components/drive/Explorer.jsx`·`TrashView.jsx` 를 main 의 것으로 되돌리기 (`git checkout main -- client/src/pages/DrivePage.jsx client/src/components/drive client/src/index.css`) — 화면 구조 전체가 예전(가운데 파일 목록)으로 돌아감
 3. `server/src/modules/drive/content.routes.js` 삭제, `drive.routes.js` 의 `[편집기 시험판 A]` 3줄(import, `X-File-Version`, `router.use`) 삭제
 4. `cd client && npm uninstall @fortune-sheet/react @corbe30/fortune-excel pdfjs-dist react-filerobot-image-editor react-konva styled-components docx-preview pptx-preview`
 5. DB 는 바꾼 것이 없음 (`file_activity` 에 `edit` 기록만 남음)

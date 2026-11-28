@@ -1,25 +1,34 @@
 import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { downloadFile } from '../lib/drive.js';
-import Dialog from '../components/common/Dialog.jsx';
+import { downloadFile, fileIcon, formatDate, formatSize } from '../lib/drive.js';
 import { editorFor } from './registry.js';
 import './editors.css';
 
-// [편집기 시험판 A] 드라이브 가운데 큰 화면: 파일 보기·편집·저장
+// [편집기 시험판 A] 탭 하나의 내용: 파일 보기·편집·저장
 // 편집기 공통 약속 (props): blob(원래 내용), file, readOnly, saverRef, onDirty
 //   - 고치면 onDirty() 를 부른다
 //   - saverRef.current = async () => Blob  (지금 내용을 원래 형식의 파일로 만들어 돌려줌)
-export default function FileViewer({ file, canEdit, token, onClose }) {
-  const editor = editorFor(file.name);
+// focused: 지금 보고 있는 칸의 보이는 탭일 때만 true → Ctrl+S 는 이 탭만 저장
+export default function FileViewer(props) {
+  const editor = editorFor(props.file.name);
+  return editor ? <EditorHost {...props} editor={editor} /> : <NoPreview file={props.file} token={props.token} />;
+}
+
+const fileMeta = (file) => [formatSize(file.size), formatDate(file.updatedAt), file.uploadedBy?.nickname].filter(Boolean).join(' · ');
+
+function EditorHost({ file, editor, canEdit, token, focused, onDirtyChange }) {
   const [blob, setBlob] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const [loadKey, setLoadKey] = useState(0); // 바꾸면 내용을 다시 받아 편집기를 새로 그림
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
-  const [confirmClose, setConfirmClose] = useState(false);
+  const [known, setKnown] = useState(file.updatedAt); // 내가 본(또는 내가 저장한) 마지막 수정 시각
   const saverRef = useRef(null);
   const baseRef = useRef(null); // 연 내용의 판 (서버가 X-File-Version 으로 알려 줌) → 그사이 누가 저장했으면 서버가 409
-  const readOnly = !editor?.canSave || !canEdit;
+  const dirtyCbRef = useRef(onDirtyChange);
+  const readOnly = !editor.canSave || !canEdit;
+  const changedOutside = file.updatedAt > known; // 다른 사람이 저장함 (목록을 다시 받아 알게 됨)
 
   // 내용 받기: 60초짜리 서명 주소(S5)를 받아 그 주소에서 내용을 가져온다
   useEffect(() => {
@@ -36,12 +45,30 @@ export default function FileViewer({ file, canEdit, token, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [file.id, token]);
+  }, [file.id, token, loadKey]);
+
+  // "저장 안 됨" 상태를 탭(● 표시)에 알림. 탭이 닫히면 false
+  useEffect(() => {
+    dirtyCbRef.current = onDirtyChange;
+  });
+  useEffect(() => {
+    dirtyCbRef.current?.(dirty);
+  }, [dirty]);
+  useEffect(() => () => dirtyCbRef.current?.(false), []);
 
   const onDirty = useCallback(() => {
     setDirty(true);
     setStatus('');
   }, []);
+
+  const reload = () => {
+    setBlob(null);
+    setLoadError('');
+    setDirty(false);
+    setStatus('');
+    setKnown(file.updatedAt);
+    setLoadKey((k) => k + 1);
+  };
 
   const save = useCallback(async () => {
     if (readOnly || saving || !saverRef.current) return;
@@ -57,6 +84,7 @@ export default function FileViewer({ file, canEdit, token, onClose }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message ?? `저장하지 못했어요 (${res.status})`);
       baseRef.current = data.file.version;
+      setKnown(data.file.updatedAt);
       setDirty(false);
       setStatus('저장했어요 ✓');
     } catch (err) {
@@ -67,10 +95,10 @@ export default function FileViewer({ file, canEdit, token, onClose }) {
     }
   }, [readOnly, saving, file.id, file.name, token]);
 
-  // Ctrl+S / ⌘S 저장, 저장 안 한 채로 탭을 닫으면 브라우저가 한 번 묻게
+  // Ctrl+S / ⌘S: 지금 보고 있는 탭만 저장. 저장 안 한 채로 브라우저 탭을 닫으면 한 번 묻게
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      if (focused && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         save();
       }
@@ -84,19 +112,17 @@ export default function FileViewer({ file, canEdit, token, onClose }) {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('beforeunload', onLeave);
     };
-  }, [save, dirty]);
+  }, [save, dirty, focused]);
 
-  const close = () => (dirty ? setConfirmClose(true) : onClose());
-  const why = !editor?.canSave ? '이 형식은 아직 보기만 돼요' : !canEdit ? '편집 권한이 없어 보기만 돼요' : '';
-  const Editor = editor?.Component;
+  const why = !editor.canSave ? '이 형식은 아직 보기만 돼요' : !canEdit ? '편집 권한이 없어 보기만 돼요' : '';
+  const Editor = editor.Component;
 
   return (
     <div className="file-viewer">
       <header className="viewer-header">
-        <button type="button" onClick={close} aria-label="목록으로">← 목록</button>
-        <strong className="viewer-name" title={file.name}>{file.name}</strong>
-        {editor && <span className="viewer-badge">{editor.label}</span>}
+        <span className="viewer-badge">{editor.label}</span>
         {why && <span className="viewer-badge muted-badge">{why}</span>}
+        <span className="viewer-meta hide-sm">{fileMeta(file)}</span>
         <span className="viewer-status" role="status">{dirty && !status ? '저장 안 됨 •' : status}</span>
         <div className="viewer-actions">
           {!readOnly && (
@@ -104,31 +130,45 @@ export default function FileViewer({ file, canEdit, token, onClose }) {
               저장
             </button>
           )}
-          <button type="button" onClick={() => downloadFile(file, token).catch((err) => setStatus(err.message))}>⬇ 내려받기</button>
+          <button type="button" onClick={() => downloadFile(file, token).catch((err) => setStatus(err.message))} title="내려받기">⬇</button>
         </div>
       </header>
+      {changedOutside && (
+        <p className="viewer-banner" role="status">
+          다른 사람이 이 파일을 저장했어요.{dirty ? ' 지금 고친 내용과 겹칠 수 있어요.' : ''}{' '}
+          <button type="button" className="link-button" onClick={reload}>새 내용 불러오기</button>
+          {dirty && <span className="muted"> (고친 내용은 사라져요)</span>}
+        </p>
+      )}
 
       <div className="viewer-body">
         {loadError && <p className="form-error viewer-message">{loadError}</p>}
         {!loadError && !blob && <p className="muted viewer-message">여는 중…</p>}
-        {!loadError && blob && Editor && (
-          <EditorBoundary>
+        {!loadError && blob && (
+          <EditorBoundary key={loadKey}>
             <Suspense fallback={<p className="muted viewer-message">편집기를 불러오는 중…</p>}>
               <Editor blob={blob} file={file} readOnly={readOnly} saverRef={saverRef} onDirty={onDirty} />
             </Suspense>
           </EditorBoundary>
         )}
       </div>
+    </div>
+  );
+}
 
-      {confirmClose && (
-        <Dialog title="저장하지 않은 내용" onClose={() => setConfirmClose(false)}>
-          <p>고친 내용을 저장하지 않았어요. 그냥 닫을까요?</p>
-          <div className="dialog-buttons">
-            <button type="button" onClick={() => setConfirmClose(false)}>계속 편집</button>
-            <button type="button" className="danger-fill" onClick={onClose}>저장 안 하고 닫기</button>
-          </div>
-        </Dialog>
-      )}
+// 미리보기가 없는 종류 (zip·hwp·동영상 …): 정보 + 내려받기
+function NoPreview({ file, token }) {
+  const [error, setError] = useState('');
+  return (
+    <div className="file-viewer">
+      <div className="no-preview">
+        <div className="no-preview-icon" aria-hidden="true">{fileIcon(file.name)}</div>
+        <strong>{file.name}</strong>
+        <p className="muted">{fileMeta(file)}</p>
+        <p className="muted">이 형식은 미리보기가 없어요.</p>
+        <button type="button" className="primary-button" onClick={() => downloadFile(file, token).catch((err) => setError(err.message))}>⬇ 내려받기</button>
+        {error && <p className="form-error">{error}</p>}
+      </div>
     </div>
   );
 }

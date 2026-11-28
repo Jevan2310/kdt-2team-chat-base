@@ -1,47 +1,68 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.js';
 import { socket } from '../lib/socket.js';
-import { driveApi, downloadFile, fileIcon, formatDate, formatSize, rankOf, uploadToFolder } from '../lib/drive.js';
-import FolderTree from '../components/drive/FolderTree.jsx';
+import { driveApi, downloadFile, fileIcon, rankOf, uploadToFolder } from '../lib/drive.js';
+import Explorer from '../components/drive/Explorer.jsx';
+import TrashView from '../components/drive/TrashView.jsx';
 import NameDialog from '../components/drive/NameDialog.jsx';
 import MoveDialog from '../components/drive/MoveDialog.jsx';
 import ContextMenu from '../components/common/ContextMenu.jsx';
 import Dialog from '../components/common/Dialog.jsx';
 import PermissionDialog from '../components/drive/PermissionDialog.jsx';
-import FileViewer from '../editors/FileViewer.jsx'; // [편집기 시험판 A]
-import { editorFor } from '../editors/registry.js'; // [편집기 시험판 A]
+import EditorArea, { DRAG_FILE } from '../editors/EditorArea.jsx';
+import FileViewer from '../editors/FileViewer.jsx';
+import { TRASH_TAB, fileTab, useEditorLayout } from '../editors/useEditorLayout.js';
 
-// 공유 드라이브: /drive (맨 위) · /drive/:folderId (폴더) · /drive/trash (휴지통)
-// 9단계: 로그인한 사람 모두 같은 폴더를 본다. 폴더별 권한은 10단계.
+// 공유 드라이브 (VS Code 처럼): 왼쪽 = 폴더·파일 탐색기, 가운데 = 연 파일 (탭, 나란히 나누기)
+// 주소: /drive (맨 위) · /drive/:folderId (고른 폴더) · ?file=ID (그 파일 열기) · /drive/trash (휴지통 탭 열기)
+const readJson = (key, fallback) => {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writeJson = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // 저장 못 해도 화면은 동작
+  }
+};
+
 export default function DrivePage({ trash = false }) {
   const { folderId: param } = useParams();
-  // 5. /drive/abc 처럼 숫자가 아닌 주소는 "잘못된 주소"로 (서버에 묻지 않음)
   const invalid = !trash && param !== undefined && !/^[1-9]\d*$/.test(param);
-  const folderId = trash || !param || invalid ? null : Number(param);
-  const viewKey = trash ? 'trash' : invalid ? 'invalid' : String(folderId ?? 'root'); // 지금 보려는 화면
-  const { token } = useAuth();
+  const selectedFolderId = trash || !param || invalid ? null : Number(param);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams(); // [편집기 시험판 A] ?file=ID 면 가운데에서 그 파일을 연다
+  const uid = user?.id ?? 'anon';
 
-  const [tree, setTree] = useState([]); // 내가 볼 수 있는 폴더 [{ id, parentId, name, locked, level }]
-  const [canCreateRoot, setCanCreateRoot] = useState(false); // 관리자만
-  // 받아 온 내용·오류에 "어느 화면 것인지(key)"를 붙여 둔다 → 다른 폴더로 옮기면 예전 내용 대신 "불러오는 중"
-  const [contents, setContents] = useState(null); // { key, folder, path, folders, files } 또는 휴지통 { key, folders, files }
-  const [error, setError] = useState(null); // { key, message }
+  const [layout, dispatch] = useEditorLayout(`drive.layout.${uid}`);
+  const [tree, setTree] = useState(null); // 내가 볼 수 있는 폴더 [{ id, parentId, name, locked, level }] (null = 아직)
+  const [canCreateRoot, setCanCreateRoot] = useState(false);
+  const [folderData, setFolderData] = useState(() => new Map()); // 폴더 id → { files, myLevel, v } 또는 { error, v }
+  const [toggled, setToggled] = useState(() => new Map(readJson(`drive.tree.${uid}`, []))); // 사람이 직접 펼치거나 접은 폴더
+  const [sidebarWidth, setSidebarWidth] = useState(() => readJson(`drive.sidebar.${uid}`, 280));
+  const [reloadKey, setReloadKey] = useState(0);
   const [notice, setNotice] = useState('');
-  const [reloadKey, setReloadKey] = useState(0); // 바꾸면 다시 불러옴
   const [menu, setMenu] = useState(null); // { anchor, item }
-  const [dialog, setDialog] = useState(null); // { type: 'newFolder' | 'rename' | 'move' | 'purge', item }
+  const [dialog, setDialog] = useState(null);
   const [upload, setUpload] = useState(null); // { count, progress }
-  const [dragging, setDragging] = useState(false);
-  const dragDepth = useRef(0);
+  const [drawer, setDrawer] = useState(false); // 휴대폰: 파일을 연 상태에서 탐색기 열기
   const fileInputRef = useRef(null);
+  const [uploadTarget, setUploadTarget] = useState(null); // ⬆ 로 고른 파일을 올릴 폴더
+  const inflight = useRef(new Set());
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
   const closeMenu = useCallback(() => setMenu(null), []);
 
-  // 왼쪽 트리
+  useEffect(() => writeJson(`drive.tree.${uid}`, [...toggled]), [uid, toggled]);
+  useEffect(() => writeJson(`drive.sidebar.${uid}`, sidebarWidth), [uid, sidebarWidth]);
+
+  // ── 폴더 나무 ──
   useEffect(() => {
     driveApi
       .tree(token)
@@ -52,32 +73,65 @@ export default function DrivePage({ trash = false }) {
       .catch((err) => setNotice(`폴더 목록을 불러오지 못했어요. (${err.message})`));
   }, [token, reloadKey]);
 
-  // 가운데 내용 (폴더 또는 휴지통)
+  const folderById = useMemo(() => new Map((tree ?? []).map((f) => [f.id, f])), [tree]);
+  const ancestorsOf = useCallback(
+    (id) => {
+      const ids = [];
+      const seen = new Set();
+      for (let cur = folderById.get(id); cur && !seen.has(cur.id); cur = folderById.get(cur.parentId)) {
+        seen.add(cur.id);
+        ids.push(cur.id);
+      }
+      return ids; // 자기 자신부터 위로
+    },
+    [folderById],
+  );
+  const pathName = (folderId) =>
+    ancestorsOf(folderId)
+      .reverse()
+      .map((id) => folderById.get(id)?.name)
+      .join(' › ');
+
+  // 펼침: 직접 펼치거나 접은 것이 우선, 아니면 고른 폴더까지의 경로는 펼쳐 둔다
+  const revealed = useMemo(() => new Set(selectedFolderId ? ancestorsOf(selectedFolderId) : []), [selectedFolderId, ancestorsOf]);
+  const isOpen = useCallback((id) => toggled.get(id) ?? revealed.has(id), [toggled, revealed]);
+  const setOpen = useCallback((id, open) => setToggled((prev) => new Map(prev).set(id, open)), []);
+
+  // ── 폴더 안 파일: 펼친 폴더 + 열린 탭의 폴더만 받아 온다 ──
+  const tabFolderIds = layout.groups.flatMap((g) => g.tabs.filter((t) => t.kind === 'file').map((t) => t.folderId));
+  const neededKey = [...new Set([...(tree ?? []).filter((f) => isOpen(f.id)).map((f) => f.id), ...tabFolderIds])]
+    .sort((a, b) => a - b)
+    .join(',');
   useEffect(() => {
-    if (invalid) return;
-    let cancelled = false;
-    const at = Date.now(); // 더 나중에 온 결과(내용 또는 오류)가 이기게
-    (trash ? driveApi.trash(token) : driveApi.contents(folderId, token))
-      .then((d) => !cancelled && setContents({ key: viewKey, at, ...d }))
-      .catch((err) => !cancelled && setError({ key: viewKey, at, message: err.message }));
-    return () => {
-      cancelled = true;
-    };
-  }, [token, folderId, trash, invalid, viewKey, reloadKey]);
+    const ids = neededKey ? neededKey.split(',').map(Number) : [];
+    for (const id of ids) {
+      const have = folderData.get(id);
+      const tag = `${id}:${reloadKey}`;
+      if ((have && have.v >= reloadKey) || inflight.current.has(tag)) continue;
+      inflight.current.add(tag);
+      const put = (value) => setFolderData((m) => ((m.get(id)?.v ?? -1) > reloadKey ? m : new Map(m).set(id, { ...value, v: reloadKey })));
+      driveApi
+        .contents(id, token)
+        .then((r) => put({ files: r.files, myLevel: r.myLevel }))
+        .catch((err) => put({ error: err.status === 404 ? '볼 수 없는 폴더예요.' : err.message }))
+        .finally(() => inflight.current.delete(tag));
+    }
+  }, [neededKey, reloadKey, token, folderData]);
 
-  // 이 화면 것만 쓴다 (같은 화면을 다시 불러오는 동안에는 지금 내용을 그대로 보여 줌)
-  // (보던 폴더를 누가 지워서 다시 불러오기가 404 면, 예전 내용 대신 오류를 보여 준다)
-  const errorIsNewer = error?.key === viewKey && (!contents || contents.key !== viewKey || error.at >= contents.at);
-  const current = contents?.key === viewKey && !errorIsNewer ? contents : null;
-  const currentError = invalid ? '잘못된 주소예요.' : errorIsNewer ? error.message : '';
+  // 누가 드라이브를 바꾸면(올리기·이름 바꾸기·저장 …) 다시 불러온다
+  useEffect(() => {
+    socket.on('drive:changed', reload);
+    return () => socket.off('drive:changed', reload);
+  }, [reload]);
 
-  // 4. 파일을 "끌어다 놓을 곳"이 아닌 데(트리·채팅 창 등)에 놓으면 브라우저가 파일을 열어 앱을 벗어나는 것 막기
+  // 파일을 끌어다 놓을 곳(폴더 줄)이 아닌 데에 놓으면 브라우저가 파일을 열어 앱을 벗어나는 것 막기
+  // (폴더 줄은 자기가 먼저 처리하고 위로 올려 보내지 않음)
   useEffect(() => {
     const isFileDrag = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
     const onDragOver = (e) => {
       if (!isFileDrag(e)) return;
       e.preventDefault();
-      if (!e.target.closest?.('.drive-main')) e.dataTransfer.dropEffect = 'none';
+      e.dataTransfer.dropEffect = 'none';
     };
     const onDrop = (e) => isFileDrag(e) && e.preventDefault();
     window.addEventListener('dragover', onDragOver);
@@ -88,13 +142,24 @@ export default function DrivePage({ trash = false }) {
     };
   }, []);
 
-  // 누가 드라이브를 바꾸면(올리기·이름 바꾸기·삭제 …) 다시 불러온다
+  // /drive/trash 로 오면 휴지통 탭을 열고 주소는 /drive 로
   useEffect(() => {
-    socket.on('drive:changed', reload);
-    return () => socket.off('drive:changed', reload);
-  }, [reload]);
+    if (!trash) return;
+    dispatch({ type: 'open', tab: TRASH_TAB });
+    navigate('/drive', { replace: true });
+  }, [trash, dispatch, navigate]);
 
-  // 요청 하나 실행 → 실패하면 안내 문구, 성공하면 다시 불러오기. 창에서 쓰면 오류 문구를 돌려준다
+  // ?file=ID → 고른 폴더에서 그 파일을 찾아 연다 (채팅의 파일 카드 등에서 오는 주소)
+  const wantFile = Number(searchParams.get('file')) || null;
+  const selectedData = selectedFolderId ? folderData.get(selectedFolderId) : null;
+  useEffect(() => {
+    if (!wantFile || !selectedData) return;
+    const file = selectedData.files?.find((f) => f.id === wantFile);
+    if (file) dispatch({ type: 'open', tab: fileTab(file) });
+    setSearchParams({}, { replace: true });
+  }, [wantFile, selectedData, dispatch, setSearchParams]);
+
+  // ── 요청 도우미 ──
   const run = async (request, doneText = '') => {
     try {
       await request();
@@ -110,17 +175,21 @@ export default function DrivePage({ trash = false }) {
     if (message) setNotice(message);
   };
 
-  const startUpload = async (fileList) => {
+  const folderRank = (id) => rankOf(folderById.get(id)?.level);
+  const canUploadTo = (id) => id !== null && folderRank(id) >= 2;
+
+  const startUpload = async (folderId, fileList) => {
     const files = [...fileList];
-    if (!files.length || folderId === null) return;
+    if (!files.length || !canUploadTo(folderId)) return;
     if (upload) {
-      setNotice('지금 올리는 중이에요. 끝난 뒤 다시 놓아 주세요.'); // 4. 두 번 겹쳐 올리면 진행률이 섞임
+      setNotice('지금 올리는 중이에요. 끝난 뒤 다시 해 주세요.');
       return;
     }
     setUpload({ count: files.length, progress: 0 });
     try {
       const result = await uploadToFolder(folderId, files, token, (progress) => setUpload({ count: files.length, progress }));
-      setNotice(`${result.files.length}개 올렸어요.`);
+      setNotice(`${folderById.get(folderId)?.name ?? '폴더'}에 ${result.files.length}개 올렸어요.`);
+      setOpen(folderId, true);
       reload();
     } catch (err) {
       setNotice(err.message);
@@ -128,13 +197,32 @@ export default function DrivePage({ trash = false }) {
       setUpload(null);
     }
   };
+  const pickUpload = (folderId) => {
+    setUploadTarget(folderId);
+    fileInputRef.current?.click();
+  };
 
   const download = (file) => downloadFile(file, token).catch((err) => setNotice(err.message));
-  // [편집기 시험판 A] 열 수 있는 종류면 가운데에서 열고, 아니면 예전처럼 내려받기
-  const openFile = (file) => (editorFor(file.name) ? setSearchParams({ file: String(file.id) }) : download(file));
-  const closeFile = () => setSearchParams({});
 
-  // 메뉴 열기: 우클릭은 그 자리, ⋯ 버튼은 버튼 아래
+  const openFile = (file, { toSide = false } = {}) => {
+    const tab = fileTab(file);
+    const wide = window.matchMedia('(min-width: 768px)').matches; // 휴대폰은 칸 하나만
+    dispatch(toSide && wide ? { type: 'openToSide', tab } : { type: 'open', tab });
+    if (file.folderId !== selectedFolderId) navigate(`/drive/${file.folderId}`, { replace: true });
+    setDrawer(false);
+  };
+  const openTrash = () => {
+    dispatch({ type: 'open', tab: TRASH_TAB });
+    setDrawer(false);
+  };
+
+  // 지금 보고 있는 파일 (트리에서 강조)
+  const activeGroup = layout.groups.find((g) => g.id === layout.activeGroup);
+  const activeTab = activeGroup?.tabs.find((t) => t.key === activeGroup.active);
+  const activeFileId = activeTab?.kind === 'file' ? activeTab.fileId : null;
+  const hasTabs = layout.groups.some((g) => g.tabs.length);
+
+  // ── 메뉴 ──
   const openMenu = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
@@ -149,107 +237,121 @@ export default function DrivePage({ trash = false }) {
     setMenu(null);
     fn();
   };
+  const itemRank = (item) => folderRank(item.kind === 'folder' ? item.id : item.folderId);
 
-  // ── 드래그해서 올리기 (폴더 안에서만) ──
-  // 4. 파일을 끌 때만 세고(글자·링크를 끌 때는 무시), 0 아래로 내려가지 않게
-  // 내 등급에 따라 보이는 버튼이 다르다 (서버도 똑같이 확인하므로 화면은 안내용)
-  const myRank = rankOf(current?.myLevel);
-  const canUpload = !trash && !invalid && folderId !== null && myRank >= 2;
-  const itemRank = (item) => rankOf(item.kind === 'folder' ? item.level : current?.myLevel);
-  const isFileDrag = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
-  const dragProps = canUpload
-    ? {
-        onDragEnter: (e) => {
-          if (!isFileDrag(e)) return;
-          dragDepth.current += 1;
-          setDragging(true);
-        },
-        onDragOver: (e) => isFileDrag(e) && e.preventDefault(),
-        onDragLeave: (e) => {
-          if (!isFileDrag(e)) return;
-          dragDepth.current = Math.max(0, dragDepth.current - 1);
-          if (dragDepth.current === 0) setDragging(false);
-        },
-        onDrop: (e) => {
-          e.preventDefault();
-          dragDepth.current = 0;
-          setDragging(false);
-          startUpload(e.dataTransfer.files);
-        },
-      }
-    : {};
+  // 폴더를 휴지통으로 → 그 아래 파일 탭은 닫는다
+  const trashFolder = async (folder) => {
+    const message = await run(() => driveApi.trashFolder(folder.id, token), `"${folder.name}"을(를) 휴지통으로 옮겼어요.`);
+    if (message) return setNotice(message);
+    const inside = new Set((tree ?? []).filter((f) => ancestorsOf(f.id).includes(folder.id)).map((f) => f.id));
+    for (const g of layout.groups) for (const t of g.tabs) if (t.kind === 'file' && inside.has(t.folderId)) dispatch({ type: 'closeFile', fileId: t.fileId });
+    if (inside.has(selectedFolderId)) navigate('/drive', { replace: true });
+  };
+  const trashFile = async (file) => {
+    const message = await run(() => driveApi.trashFile(file.id, token), `"${file.name}"을(를) 휴지통으로 옮겼어요.`);
+    if (message) return setNotice(message);
+    dispatch({ type: 'closeFile', fileId: file.id });
+  };
 
-  const path = current?.path ?? [];
-  const treePath = contents?.path ?? []; // 트리는 불러오는 동안에도 펼친 상태 유지
-  const openId = Number(searchParams.get('file')) || null; // [편집기 시험판 A]
-  const openedFile = !trash && openId ? current?.files.find((f) => f.id === openId) : null;
-  const rows = current
-    ? [
-        ...current.folders.map((f) => ({ ...f, kind: 'folder' })),
-        ...current.files.map((f) => ({ ...f, kind: 'file' })),
-      ]
-    : [];
+  // ── 탭 내용 ──
+  const tabInfo = (tab) => {
+    if (tab.kind === 'trash') return { label: '휴지통', icon: '🗑️' };
+    const data = folderData.get(tab.folderId);
+    const file = data?.files?.find((f) => f.id === tab.fileId);
+    const name = file?.name ?? tab.name;
+    return { label: name, icon: fileIcon(name), title: `${pathName(tab.folderId)} › ${name}`, missing: Boolean(data && !file) };
+  };
+  const renderTab = (tab, { focused, onDirtyChange }) => {
+    if (tab.kind === 'trash') {
+      return (
+        <TrashView
+          token={token}
+          reloadKey={reloadKey}
+          onRestore={(item) => runAndShow(() => driveApi.restore(`${item.kind}s`, item.id, token), `"${item.name}"을(를) 복원했어요.`)}
+          onPurge={(item) => setDialog({ type: 'purge', item })}
+        />
+      );
+    }
+    const data = folderData.get(tab.folderId);
+    if (!data) return <p className="muted viewer-message">불러오는 중…</p>;
+    const file = data.files?.find((f) => f.id === tab.fileId);
+    if (!file) {
+      return (
+        <div className="no-preview">
+          <div className="no-preview-icon" aria-hidden="true">🫥</div>
+          <strong>{tab.name}</strong>
+          <p className="muted">이 파일을 찾을 수 없어요. 옮겨졌거나 지워졌거나, 볼 권한이 바뀌었어요.</p>
+        </div>
+      );
+    }
+    return <FileViewer key={file.id} file={file} canEdit={rankOf(data.myLevel) >= 2} token={token} focused={focused} onDirtyChange={onDirtyChange} />;
+  };
+
+  // ── 왼쪽 칸 너비 조절 ──
+  const startSidebarResize = (e) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const start = e.clientX;
+    const base = sidebarWidth;
+    const onMove = (ev) => setSidebarWidth(Math.min(520, Math.max(200, base + ev.clientX - start)));
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      window.dispatchEvent(new Event('resize'));
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  };
+
+  const selectedFolder = selectedFolderId ? folderById.get(selectedFolderId) : null;
+  const canNewFolder = selectedFolderId === null ? canCreateRoot : folderRank(selectedFolderId) >= 2;
+  const lostFolder = Boolean(tree && selectedFolderId && !selectedFolder); // 주소의 폴더가 없거나 볼 수 없음
+
+  const emptyHint = (
+    <div className="welcome">
+      <div className="welcome-icon" aria-hidden="true">📂</div>
+      <p><strong>왼쪽에서 파일을 고르면 여기에서 열려요</strong></p>
+      <ul className="muted">
+        <li>Ctrl(⌘)·Alt 누른 채 파일 클릭 → 오른쪽에 나란히</li>
+        <li>탭을 칸 오른쪽 끝으로 끌거나 Ctrl+\ → 화면 나누기</li>
+        <li>컴퓨터의 파일을 왼쪽 폴더에 끌어다 놓으면 올리기</li>
+        <li>Ctrl(⌘)+S → 저장</li>
+      </ul>
+    </div>
+  );
 
   return (
-    <div className="drive-layout">
-      <aside className="drive-sidebar">
-        <Link to="/drive" className={`tree-root ${!trash && folderId === null ? 'active' : ''}`}>🏠 드라이브</Link>
-        <FolderTree
-          folders={tree}
-          currentId={folderId}
-          openIds={treePath.map((p) => p.id)}
-          onFolderMenu={(e, f) => openMenu(e, { ...f, kind: 'folder' })}
-        />
-        <Link to="/drive/trash" className={`tree-root trash-link ${trash ? 'active' : ''}`}>🗑️ 휴지통</Link>
-      </aside>
-
-      <section className="drive-main" {...dragProps}>
-        <header className="drive-header">
-          <nav className="breadcrumb" aria-label="현재 위치">
-            {trash ? (
-              <>
-                <Link to="/drive">드라이브</Link>
-                <span className="crumb-sep">›</span>
-                <span>🗑️ 휴지통</span>
-              </>
-            ) : (
-              <>
-                <Link to="/drive">드라이브</Link>
-                {path.map((p) => (
-                  <span key={p.id}>
-                    <span className="crumb-sep">›</span>
-                    <Link to={`/drive/${p.id}`}>{p.name}</Link>
-                  </span>
-                ))}
-              </>
+    <div className={`drive-layout ${drawer || !hasTabs ? 'show-explorer' : ''}`}>
+      <aside className="drive-sidebar" style={{ width: sidebarWidth }} aria-label="탐색기">
+        <div className="explorer-header">
+          <span className="explorer-title">드라이브</span>
+          <div className="explorer-actions">
+            <button
+              type="button"
+              disabled={!canNewFolder}
+              title={canNewFolder ? `새 폴더 (${selectedFolder?.name ?? '맨 위'})` : '여기에 폴더를 만들 권한이 없어요'}
+              aria-label="새 폴더"
+              onClick={() => setDialog({ type: 'newFolder', parentId: selectedFolderId })}
+            >
+              ＋📁
+            </button>
+            <button
+              type="button"
+              disabled={!canUploadTo(selectedFolderId) || Boolean(upload)}
+              title={canUploadTo(selectedFolderId) ? `올리기 (${selectedFolder.name})` : '올릴 폴더를 고르세요 (편집 권한 필요)'}
+              aria-label="파일 올리기"
+              onClick={() => pickUpload(selectedFolderId)}
+            >
+              ⬆
+            </button>
+            <button type="button" title="새로 고침" aria-label="새로 고침" onClick={reload}>⟳</button>
+            <button type="button" title="모두 접기" aria-label="모두 접기" onClick={() => setToggled(new Map((tree ?? []).map((f) => [f.id, false])))}>⊟</button>
+            {hasTabs && (
+              <button type="button" className="only-sm" aria-label="탐색기 닫기" onClick={() => setDrawer(false)}>✕</button>
             )}
-          </nav>
-          {!trash && !invalid && (
-            <div className="drive-actions">
-              {/* 휴대폰은 왼쪽 트리(휴지통 링크 포함)가 숨겨지므로 여기에도 휴지통 */}
-              <Link to="/drive/trash" className="only-sm drive-trash-button" aria-label="휴지통">🗑️</Link>
-              {current?.canCreateHere && <button type="button" onClick={() => setDialog({ type: 'newFolder' })}>＋ 폴더</button>}
-              {folderId !== null && myRank >= 3 && (
-                <button type="button" onClick={() => setDialog({ type: 'permissions', folderId })} title="이 폴더 권한 설정">🔐 권한</button>
-              )}
-              {canUpload && (
-                <button type="button" className="primary" onClick={() => fileInputRef.current?.click()} disabled={Boolean(upload)}>
-                  ⬆ 올리기
-                </button>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                hidden
-                onChange={(e) => {
-                  startUpload(e.target.files);
-                  e.target.value = '';
-                }}
-              />
-            </div>
-          )}
-        </header>
+          </div>
+        </div>
 
         {upload && (
           <div className="upload-bar" role="status">
@@ -264,100 +366,90 @@ export default function DrivePage({ trash = false }) {
             {notice} <button type="button" className="link-button" onClick={() => setNotice('')}>닫기</button>
           </p>
         )}
-        {currentError && <p className="form-error drive-error">{currentError} <Link to="/drive">드라이브 맨 위로</Link></p>}
-        {!currentError && !current && <p className="muted drive-loading">불러오는 중…</p>}
+        {invalid && <p className="form-error drive-notice">잘못된 주소예요.</p>}
+        {lostFolder && <p className="form-error drive-notice">그 폴더를 찾을 수 없어요 (지워졌거나 볼 권한이 없어요).</p>}
 
-        {/* [편집기 시험판 A] 파일을 열면 목록 대신 편집 화면 */}
-        {!currentError && openedFile && (
-          <FileViewer key={openedFile.id} file={openedFile} canEdit={myRank >= 2} token={token} onClose={closeFile} />
-        )}
-        {!currentError && current && openId && !openedFile && (
-          <p className="drive-notice" role="status">
-            그 파일이 이 폴더에 없어요 (옮겨졌거나 지워졌어요). <button type="button" className="link-button" onClick={closeFile}>목록으로</button>
-          </p>
-        )}
+        <div className="explorer-scroll">
+          <button type="button" className={`tree-root ${selectedFolderId === null ? 'active' : ''}`} onClick={() => navigate('/drive')}>
+            🏠 드라이브
+          </button>
+          {!tree && <p className="muted tree-note">불러오는 중…</p>}
+          {tree && !tree.length && <p className="muted tree-note">볼 수 있는 폴더가 없어요. 관리자에게 권한을 요청하세요.</p>}
+          {tree && (
+            <Explorer
+              folders={tree}
+              folderData={folderData}
+              isOpen={isOpen}
+              onToggle={setOpen}
+              selectedFolderId={selectedFolderId}
+              activeFileId={activeFileId}
+              onSelectFolder={(id) => id !== selectedFolderId && navigate(`/drive/${id}`)}
+              onOpenFile={openFile}
+              onFolderMenu={(e, f) => openMenu(e, { ...f, kind: 'folder' })}
+              onFileMenu={(e, f) => openMenu(e, { ...f, kind: 'file' })}
+              canUploadTo={canUploadTo}
+              onUploadDrop={startUpload}
+              dragFileType={DRAG_FILE}
+              toTab={fileTab}
+            />
+          )}
+        </div>
+        <button type="button" className={`tree-root trash-link ${activeTab?.kind === 'trash' ? 'active' : ''}`} onClick={openTrash}>
+          🗑️ 휴지통
+        </button>
+      </aside>
+      <div className="sidebar-splitter" role="separator" aria-orientation="vertical" aria-label="탐색기 너비 조절" onPointerDown={startSidebarResize} />
 
-        {!currentError && current && !openedFile && (
-          <div className="drive-table-wrap">
-            <table className="drive-table">
-              <thead>
-                {trash ? (
-                  <tr><th>이름</th><th className="hide-sm">원래 위치</th><th className="hide-sm">지운 사람</th><th>지운 날짜</th><th aria-label="동작" /></tr>
-                ) : (
-                  <tr><th>이름</th><th className="hide-sm">올린 사람</th><th>수정일</th><th className="hide-sm">크기</th><th aria-label="메뉴" /></tr>
-                )}
-              </thead>
-              <tbody>
-                {rows.map((item) =>
-                  trash ? (
-                    <tr key={`${item.kind}-${item.id}`}>
-                      <td className="name-cell">{item.kind === 'folder' ? '📁' : fileIcon(item.name)} {item.name}</td>
-                      <td className="hide-sm muted">{item.from}</td>
-                      <td className="hide-sm">{item.deletedBy ?? '—'}</td>
-                      <td>{formatDate(item.deletedAt)}</td>
-                      <td className="row-actions">
-                        <button type="button" onClick={() => runAndShow(() => driveApi.restore(`${item.kind}s`, item.id, token), `"${item.name}"을(를) 복원했어요.`)}>복원</button>
-                        {item.canPurge && (
-                          <button type="button" className="danger" onClick={() => setDialog({ type: 'purge', item })}>영구 삭제</button>
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={`${item.kind}-${item.id}`} onContextMenu={(e) => openMenu(e, item)}>
-                      <td className="name-cell">
-                        {item.kind === 'folder' ? (
-                          <Link to={`/drive/${item.id}`}>
-                            📁 {item.name}
-                            {item.locked && <span title="위 폴더 권한을 이어받지 않는 폴더"> 🔒</span>}
-                          </Link>
-                        ) : (
-                          <button type="button" className="file-name" onClick={() => openFile(item)} title={editorFor(item.name) ? '눌러서 열기' : '눌러서 내려받기'}>
-                            {fileIcon(item.name)} {item.name}
-                          </button>
-                        )}
-                      </td>
-                      <td className="hide-sm">{item.uploadedBy?.nickname ?? '—'}</td>
-                      <td>{formatDate(item.updatedAt)}</td>
-                      <td className="hide-sm">{item.kind === 'file' ? formatSize(item.size) : '—'}</td>
-                      <td className="row-actions">
-                        <button type="button" className="more" aria-label={`${item.name} 메뉴`} onClick={(e) => openMenu(e, item)}>⋯</button>
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-            {rows.length === 0 && (
-              <p className="drive-empty muted">
-                {trash
-                  ? '휴지통이 비어 있어요. (내가 편집할 수 있는 곳에서 지운 것만 보여요)'
-                  : canUpload
-                    ? '비어 있어요. 파일을 여기로 끌어다 놓거나 ⬆ 올리기를 누르세요.'
-                    : current?.canCreateHere
-                      ? '폴더가 없어요. ＋ 폴더로 만들어 보세요.'
-                      : folderId === null
-                        ? '볼 수 있는 폴더가 없어요. 관리자에게 권한을 요청하세요.'
-                        : '비어 있어요.'}
-              </p>
-            )}
-          </div>
-        )}
+      <main className="drive-main">
+        <EditorArea
+          layout={layout}
+          dispatch={dispatch}
+          renderTab={renderTab}
+          tabInfo={tabInfo}
+          onNotice={setNotice}
+          emptyHint={emptyHint}
+          leftSlot={
+            <button type="button" className="tab-bar-button only-sm" aria-label="탐색기 열기" onClick={() => setDrawer(true)}>☰</button>
+          }
+        />
+      </main>
 
-        {dragging && <div className="drop-overlay">여기에 놓으면 이 폴더에 올려요</div>}
-      </section>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          startUpload(uploadTarget, e.target.files);
+          e.target.value = '';
+        }}
+      />
 
       {menu && (
         <ContextMenu anchor={menu.anchor} onClose={closeMenu} label={`${menu.item.name} 메뉴`}>
-          {menu.item.kind === 'folder' ? (
-            <button type="button" role="menuitem" onClick={menuAction(() => navigate(`/drive/${menu.item.id}`))}>📂 열기</button>
-          ) : (
-            <>
-              {editorFor(menu.item.name) && (
-                <button type="button" role="menuitem" onClick={menuAction(() => openFile(menu.item))}>👁️ 열기</button>
+          {menu.item.kind === 'folder'
+            ? itemRank(menu.item) >= 2 && (
+                <>
+                  <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'newFolder', parentId: menu.item.id }))}>＋ 새 폴더</button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenu(null);
+                      pickUpload(menu.item.id);
+                    }}
+                  >
+                    ⬆ 파일 올리기
+                  </button>
+                </>
+              )
+            : (
+                <>
+                  <button type="button" role="menuitem" onClick={menuAction(() => openFile(menu.item))}>👁️ 열기</button>
+                  <button type="button" role="menuitem" className="hide-sm" onClick={menuAction(() => openFile(menu.item, { toSide: true }))}>⫿ 오른쪽에 나란히 열기</button>
+                  <button type="button" role="menuitem" onClick={menuAction(() => download(menu.item))}>⬇️ 내려받기</button>
+                </>
               )}
-              <button type="button" role="menuitem" onClick={menuAction(() => download(menu.item))}>⬇️ 내려받기</button>
-            </>
-          )}
           {itemRank(menu.item) >= 2 && (
             <>
               <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'rename', item: menu.item }))}>✏️ 이름 바꾸기</button>
@@ -372,28 +464,27 @@ export default function DrivePage({ trash = false }) {
               type="button"
               role="menuitem"
               className="danger"
-              onClick={menuAction(() =>
-                runAndShow(
-                  () => (menu.item.kind === 'folder' ? driveApi.trashFolder(menu.item.id, token) : driveApi.trashFile(menu.item.id, token)),
-                  `"${menu.item.name}"을(를) 휴지통으로 옮겼어요.`,
-                ),
-              )}
+              onClick={menuAction(() => (menu.item.kind === 'folder' ? trashFolder(menu.item) : trashFile(menu.item)))}
             >
               🗑️ 휴지통으로
             </button>
           )}
+          {menu.item.kind === 'folder' && itemRank(menu.item) < 2 && <p className="menu-note muted">보기 권한만 있어요</p>}
         </ContextMenu>
       )}
 
       {dialog?.type === 'newFolder' && (
         <NameDialog
-          title={folderId === null ? '새 폴더 (맨 위)' : '새 폴더'}
+          title={dialog.parentId === null ? '새 폴더 (맨 위)' : `새 폴더 — ${folderById.get(dialog.parentId)?.name ?? ''}`}
           maxLength={100}
           submitLabel="만들기"
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {
-            const message = await run(() => driveApi.createFolder(folderId, name, token));
-            if (!message) setDialog(null);
+            const message = await run(() => driveApi.createFolder(dialog.parentId, name, token));
+            if (!message) {
+              if (dialog.parentId !== null) setOpen(dialog.parentId, true);
+              setDialog(null);
+            }
             return message;
           }}
         />
@@ -410,7 +501,10 @@ export default function DrivePage({ trash = false }) {
             const message = await run(() =>
               item.kind === 'folder' ? driveApi.updateFolder(item.id, { name }, token) : driveApi.updateFile(item.id, { name }, token),
             );
-            if (!message) setDialog(null);
+            if (!message) {
+              if (item.kind === 'file') dispatch({ type: 'updateFile', fileId: item.id, patch: { name } });
+              setDialog(null);
+            }
             return message;
           }}
         />
@@ -418,7 +512,7 @@ export default function DrivePage({ trash = false }) {
       {dialog?.type === 'move' && (
         <MoveDialog
           item={dialog.item}
-          folders={tree}
+          folders={tree ?? []}
           canRoot={canCreateRoot}
           onClose={() => setDialog(null)}
           onSubmit={async (target) => {
@@ -430,7 +524,11 @@ export default function DrivePage({ trash = false }) {
                   : driveApi.updateFile(item.id, { folderId: target }, token),
               `"${item.name}"을(를) 옮겼어요.`,
             );
-            if (!message) setDialog(null);
+            if (!message) {
+              if (item.kind === 'file') dispatch({ type: 'updateFile', fileId: item.id, patch: { folderId: target } });
+              if (target !== null) setOpen(target, true);
+              setDialog(null);
+            }
             return message;
           }}
         />
