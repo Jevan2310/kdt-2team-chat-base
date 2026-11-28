@@ -10,6 +10,7 @@
 | POST | `/api/auth/signup` | — | `{ username, password, nickname, department? }` | `201 { token, user }` | 400 입력 규칙, 409 아이디 중복 |
 | POST | `/api/auth/login` | — | `{ username, password }` | `{ token, user }` | 401 아이디·비밀번호 틀림 |
 | GET | `/api/auth/me` | ✅ | — | `{ user }` | 401 토큰 없음·만료 (화면은 401 일 때만 로그아웃, 500·네트워크 오류면 3초 뒤 다시 시도) |
+| GET | `/api/users` | ✅ | — | `{ users: [{ id, nickname, department, role, avatarUrl }] }` (권한 줄 사람 고르기용, 공개 정보만) | — |
 | PATCH | `/api/users/me` | ✅ | `{ nickname?, department? }` 보낸 칸만 바뀜 (`department: null` = 부서 없음) | `{ user }` + 소켓 `user:updated` | 400 입력 규칙·바꿀 내용 없음 |
 | PUT | `/api/users/me/avatar` | ✅ | 본문 = 이미지 파일 그대로, `Content-Type: image/jpeg \| image/png \| image/webp` (2MB 이하) | `{ user }` + 소켓 `user:updated` | 400 사진이 아님, 413 너무 큼 |
 | DELETE | `/api/users/me/avatar` | ✅ | — | `{ user }` (`avatarUrl: null`) + 소켓 `user:updated` | — |
@@ -33,17 +34,20 @@
 - `password`: 6자 이상 (DB에는 bcrypt로 암호화해서 저장)
 - `nickname`: 1~20자 · `department`: 선택, 50자 이하 (회원가입·프로필 수정 공통, `modules/users/users.rules.js`)
 
-## 공유 드라이브 API (9단계, 모두 로그인 필요)
+## 공유 드라이브 API (9·10단계, 서명 주소 내려받기 말고는 모두 로그인 필요)
 
 | 메서드 | 주소 | 보내는 값 | 받는 값 | 오류 |
 |---|---|---|---|---|
-| GET | `/api/drive/tree` | — | `{ folders: [{ id, parentId, name }] }` (휴지통·휴지통 안 폴더 제외) | — |
-| GET | `/api/drive/folders/:id/contents` | `:id` = 폴더 id 또는 `root` | `{ folder, path: [{ id, name }], folders, files }` (맨 위에는 폴더만) | 404 |
+| GET | `/api/drive/tree` | — | `{ canCreateRoot, folders: [{ id, parentId, name, locked, level }] }` (내가 볼 수 있는 것만, 위 폴더를 못 보면 parentId=null 로 맨 위에) | — |
+| GET | `/api/drive/folders/:id/contents` | `:id` = 폴더 id 또는 `root` | `{ folder, path, folders, files, myLevel, canCreateHere }` (보기) | 404 못 봄 |
+| GET | `/api/drive/folders/:id/permissions` | — | `{ folder: { inherit, botEnabled, … }, grants, inherited, myLevel }` (관리) | 403, 404 |
+| PUT | `/api/drive/folders/:id/permissions` | `{ inherit, botEnabled, grants: [{ type: 'user'\|'department'\|'all', userId?, department?, level: 'view'\|'edit'\|'manage' }] }` 통째로 바꿈 | 위와 같음 | 400 내 관리 권한이 없어짐·없는 사람/부서, 403 |
 | POST | `/api/drive/folders` | `{ parentId: null\|id, name }` (1~100자, `/ \` 금지, 같은 위치 같은 이름 금지) | `201 { folder }` | 400 이름 규칙, 404 위 폴더 없음, 409 이름 겹침 |
 | PATCH | `/api/drive/folders/:id` | `{ name?, parentId? }` (`parentId: null` = 맨 위로) | `{ folder }` | 400 자기 안으로 옮기기, 404, 409 이름 겹침 |
 | DELETE | `/api/drive/folders/:id` | — | `{ ok }` → 휴지통 (아래 폴더·파일도 같이 숨겨짐) | 404 |
 | POST | `/api/drive/folders/:id/files` | multipart, 칸 이름 `files` (최대 20개, 하나 50MB) | `201 { files: [{ id, name, size }] }` | 400 실행 파일, 404 폴더 없음(올리는 중 휴지통 포함, 이미 쓴 파일은 지움), 413 너무 큼 |
-| GET | `/api/drive/files/:id/download` | — | 파일 (`Content-Disposition: attachment`, `application/octet-stream`, `nosniff`). 다 보낸 뒤에 기록 | 404 (DB에도 디스크에도 없으면) |
+| POST | `/api/drive/files/:id/link` | `{ inline? }` | `{ url: '/api/drive/download/<표>', expiresIn: 60 }` (보기) | 404 |
+| GET | `/api/drive/download/:token` | — (로그인 헤더 없이) | 파일 (`attachment`, `nosniff`, `no-store`). 받는 순간 권한을 다시 확인, 다 보낸 뒤 기록 | 410 만료·잘못된 표, 404 권한 없어짐·파일 없음 |
 | PATCH | `/api/drive/files/:id` | `{ name?, folderId? }` | `{ file }` | 400 이름 규칙·실행 파일 확장자로 바꾸기, 404 |
 | DELETE | `/api/drive/files/:id` | — | `{ ok }` → 휴지통 | 404 |
 | GET | `/api/drive/trash` | — | `{ folders, files }` (직접 지운 것만, `from` = 원래 위치) | — |
@@ -51,13 +55,18 @@
 | DELETE | `/api/drive/trash/folders\|files/:id` | — | `{ ok }` 영구 삭제 (폴더면 아래 전부, 디스크 파일까지) | 404 휴지통에 없음 |
 
 - file 모양: `{ id, folderId, name, mimeType, size, createdAt, updatedAt, uploadedBy: { id, nickname } }`
-- 바뀔 때마다 소켓 `drive:changed` → 화면이 다시 불러옴
+- 바뀔 때마다 소켓 `drive:changed` (내용 없음 — 못 보는 폴더 정보가 새지 않게) → 화면이 다시 불러와서 각자 볼 수 있는 것만 받음
 - 모든 동작은 `file_activity` 표에 기록 (누가, 무엇을, 언제)
 - 파일은 `server/storage/files/<무작위 32자>`에 저장하고 원래 이름은 DB에만 둔다
 - 실행 파일(exe·msi·bat·cmd·ps1·vbs·js·hta·lnk·reg·jar·apk·dmg·sh 등)은 **올리기와 이름 바꾸기 둘 다** 막는다. 끝의 점·공백은 지운다(`a.exe.` 우회 방지), 이름은 NFC로 맞춘다
 - 폴더 트리를 바꾸는 작업(만들기·옮기기·휴지통·복원·영구 삭제)은 DB 이름 잠금(`GET_LOCK`)으로 한 번에 하나씩 → 이름 중복·순환 방지
 - 영구 삭제는 파일 → 가장 깊은 폴더부터 한 단계씩 지운다 (MySQL CASCADE 15단계 제한 때문)
-- 10단계에서 모든 주소에 폴더 권한 확인이 들어간다
+- **권한 (10단계)**: 등급 view 보기 < edit 편집 < manage 관리, 대상 사람·부서·전체. 이 폴더부터 위로 올라가며 나에게 해당하는 줄 중 가장 높은 등급 (상속을 끊은 폴더 🔒 에서 멈춤). 관리자(role=admin)는 어디서나 관리
+  - 보기: 목록·내려받기 / 편집: + 올리기·폴더 만들기·이름 바꾸기·옮기기(옮길 곳도 편집)·휴지통·복원 / 관리: + 권한 바꾸기·영구 삭제
+  - 볼 수 없는 폴더·파일은 **404** (있는지도 알려 주지 않음), 등급이 모자라면 **403**
+  - 맨 위 폴더 만들기·맨 위로 옮기기는 관리자만. 폴더를 만든 사람은 그 폴더의 관리자가 된다
+  - 휴지통은 그 자리에 편집 권한이 있는 것만 보이고, `canPurge` = 관리 권한
+  - 권한 계산·확인은 모두 `server/src/modules/drive/permissions.js` (`rankIn`, `assertCan`)
 
 ## 프로필 사진 규칙
 - `avatarUrl`: 없으면 `null` → 화면은 이름 첫 글자 + id별 색으로 그림

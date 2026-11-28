@@ -62,21 +62,20 @@ export function uploadToFolder(folderId, files, token, onProgress) {
   });
 }
 
-// 내려받기: 주소에 토큰을 실을 수 없어서(로그인 확인) fetch 로 받아 브라우저 저장으로 넘긴다
+// 등급 이름·순위 (서버 permissions.js 와 같음)
+export const LEVEL_LABELS = { view: '보기', edit: '편집', manage: '관리' };
+export const rankOf = (level) => ({ view: 1, edit: 2, manage: 3 })[level] ?? 0;
+
+// 내려받기 (S5): 서버에서 60초짜리 서명 주소를 받아 브라우저가 그 주소로 바로 받는다
+// (예전처럼 파일 전체를 메모리에 받아 두지 않음 → 큰 파일도 괜찮고, 브라우저 내려받기 진행률이 보임)
 export async function downloadFile(file, token) {
-  const res = await fetch(`/api/drive/files/${file.id}/download`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.message ?? '내려받지 못했어요.');
-  }
-  const url = URL.createObjectURL(await res.blob());
+  const { url } = await api(`/drive/files/${file.id}/link`, { method: 'POST', token });
   const a = document.createElement('a');
   a.href = url;
   a.download = file.name;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 // 드라이브 API 묶음 (화면 코드에서 주소를 직접 쓰지 않게)
@@ -91,4 +90,6 @@ export const driveApi = {
   trash: (token) => api('/drive/trash', { token }),
   restore: (kind, id, token) => api(`/drive/trash/${kind}/${id}/restore`, { method: 'POST', token }),
   purge: (kind, id, token) => api(`/drive/trash/${kind}/${id}`, { method: 'DELETE', token }),
+  permissions: (id, token) => api(`/drive/folders/${id}/permissions`, { token }),
+  setPermissions: (id, body, token) => api(`/drive/folders/${id}/permissions`, { method: 'PUT', body, token }),
 };

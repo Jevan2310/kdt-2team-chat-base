@@ -298,3 +298,20 @@ a { color: var(--primary); text-decoration: none; }
   .chat-fab { right: 16px; bottom: 16px; }
   .toasts { right: 16px; bottom: 84px; }
 }
+
+/* 폴더 권한 창 */
+.dialog-wide { width: min(560px, 100%); }
+.perm { display: flex; flex-direction: column; gap: 14px; }
+.perm h3 { font-size: 14px; margin: 0 0 6px; }
+.perm-check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; font-size: 14px; cursor: pointer; }
+.perm-check input { margin-top: 3px; }
+.perm-check small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.perm-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
+.perm-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; font-size: 14px; }
+.perm-list li + li { border-top: 1px solid var(--border); }
+.perm-list.inherited { background: #f7f8fa; color: var(--muted); }
+.perm-row-actions { display: flex; align-items: center; gap: 8px; }
+.perm select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px; background: var(--surface); }
+.perm-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.perm-add button { padding: 5px 12px; border: 1px solid var(--primary); border-radius: 6px; background: var(--surface); color: var(--primary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.perm-help { font-size: 12px; margin: 6px 0 0; }

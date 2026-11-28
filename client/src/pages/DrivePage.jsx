@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.js';
 import { socket } from '../lib/socket.js';
-import { driveApi, downloadFile, fileIcon, formatDate, formatSize, uploadToFolder } from '../lib/drive.js';
+import { driveApi, downloadFile, fileIcon, formatDate, formatSize, rankOf, uploadToFolder } from '../lib/drive.js';
 import FolderTree from '../components/drive/FolderTree.jsx';
 import NameDialog from '../components/drive/NameDialog.jsx';
 import MoveDialog from '../components/drive/MoveDialog.jsx';
 import ContextMenu from '../components/common/ContextMenu.jsx';
 import Dialog from '../components/common/Dialog.jsx';
+import PermissionDialog from '../components/drive/PermissionDialog.jsx';
 
 // 공유 드라이브: /drive (맨 위) · /drive/:folderId (폴더) · /drive/trash (휴지통)
 // 9단계: 로그인한 사람 모두 같은 폴더를 본다. 폴더별 권한은 10단계.
@@ -20,7 +21,8 @@ export default function DrivePage({ trash = false }) {
   const { token } = useAuth();
   const navigate = useNavigate();
 
-  const [tree, setTree] = useState([]);
+  const [tree, setTree] = useState([]); // 내가 볼 수 있는 폴더 [{ id, parentId, name, locked, level }]
+  const [canCreateRoot, setCanCreateRoot] = useState(false); // 관리자만
   // 받아 온 내용·오류에 "어느 화면 것인지(key)"를 붙여 둔다 → 다른 폴더로 옮기면 예전 내용 대신 "불러오는 중"
   const [contents, setContents] = useState(null); // { key, folder, path, folders, files } 또는 휴지통 { key, folders, files }
   const [error, setError] = useState(null); // { key, message }
@@ -40,7 +42,10 @@ export default function DrivePage({ trash = false }) {
   useEffect(() => {
     driveApi
       .tree(token)
-      .then((d) => setTree(d.folders))
+      .then((d) => {
+        setTree(d.folders);
+        setCanCreateRoot(d.canCreateRoot);
+      })
       .catch((err) => setNotice(`폴더 목록을 불러오지 못했어요. (${err.message})`));
   }, [token, reloadKey]);
 
@@ -141,7 +146,10 @@ export default function DrivePage({ trash = false }) {
 
   // ── 드래그해서 올리기 (폴더 안에서만) ──
   // 4. 파일을 끌 때만 세고(글자·링크를 끌 때는 무시), 0 아래로 내려가지 않게
-  const canUpload = !trash && !invalid && folderId !== null;
+  // 내 등급에 따라 보이는 버튼이 다르다 (서버도 똑같이 확인하므로 화면은 안내용)
+  const myRank = rankOf(current?.myLevel);
+  const canUpload = !trash && !invalid && folderId !== null && myRank >= 2;
+  const itemRank = (item) => rankOf(item.kind === 'folder' ? item.level : current?.myLevel);
   const isFileDrag = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
   const dragProps = canUpload
     ? {
@@ -212,7 +220,10 @@ export default function DrivePage({ trash = false }) {
             <div className="drive-actions">
               {/* 휴대폰은 왼쪽 트리(휴지통 링크 포함)가 숨겨지므로 여기에도 휴지통 */}
               <Link to="/drive/trash" className="only-sm drive-trash-button" aria-label="휴지통">🗑️</Link>
-              <button type="button" onClick={() => setDialog({ type: 'newFolder' })}>＋ 폴더</button>
+              {current?.canCreateHere && <button type="button" onClick={() => setDialog({ type: 'newFolder' })}>＋ 폴더</button>}
+              {folderId !== null && myRank >= 3 && (
+                <button type="button" onClick={() => setDialog({ type: 'permissions', folderId })} title="이 폴더 권한 설정">🔐 권한</button>
+              )}
               {canUpload && (
                 <button type="button" className="primary" onClick={() => fileInputRef.current?.click()} disabled={Boolean(upload)}>
                   ⬆ 올리기
@@ -268,14 +279,19 @@ export default function DrivePage({ trash = false }) {
                       <td>{formatDate(item.deletedAt)}</td>
                       <td className="row-actions">
                         <button type="button" onClick={() => runAndShow(() => driveApi.restore(`${item.kind}s`, item.id, token), `"${item.name}"을(를) 복원했어요.`)}>복원</button>
-                        <button type="button" className="danger" onClick={() => setDialog({ type: 'purge', item })}>영구 삭제</button>
+                        {item.canPurge && (
+                          <button type="button" className="danger" onClick={() => setDialog({ type: 'purge', item })}>영구 삭제</button>
+                        )}
                       </td>
                     </tr>
                   ) : (
                     <tr key={`${item.kind}-${item.id}`} onContextMenu={(e) => openMenu(e, item)}>
                       <td className="name-cell">
                         {item.kind === 'folder' ? (
-                          <Link to={`/drive/${item.id}`}>📁 {item.name}</Link>
+                          <Link to={`/drive/${item.id}`}>
+                            📁 {item.name}
+                            {item.locked && <span title="위 폴더 권한을 이어받지 않는 폴더"> 🔒</span>}
+                          </Link>
                         ) : (
                           <button type="button" className="file-name" onClick={() => download(item)} title="눌러서 내려받기">
                             {fileIcon(item.name)} {item.name}
@@ -295,7 +311,15 @@ export default function DrivePage({ trash = false }) {
             </table>
             {rows.length === 0 && (
               <p className="drive-empty muted">
-                {trash ? '휴지통이 비어 있어요.' : canUpload ? '비어 있어요. 파일을 여기로 끌어다 놓거나 ⬆ 올리기를 누르세요.' : '폴더가 없어요. ＋ 폴더로 만들어 보세요.'}
+                {trash
+                  ? '휴지통이 비어 있어요. (내가 편집할 수 있는 곳에서 지운 것만 보여요)'
+                  : canUpload
+                    ? '비어 있어요. 파일을 여기로 끌어다 놓거나 ⬆ 올리기를 누르세요.'
+                    : current?.canCreateHere
+                      ? '폴더가 없어요. ＋ 폴더로 만들어 보세요.'
+                      : folderId === null
+                        ? '볼 수 있는 폴더가 없어요. 관리자에게 권한을 요청하세요.'
+                        : '비어 있어요.'}
               </p>
             )}
           </div>
@@ -311,21 +335,30 @@ export default function DrivePage({ trash = false }) {
           ) : (
             <button type="button" role="menuitem" onClick={menuAction(() => download(menu.item))}>⬇️ 내려받기</button>
           )}
-          <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'rename', item: menu.item }))}>✏️ 이름 바꾸기</button>
-          <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'move', item: menu.item }))}>📦 옮기기</button>
-          <button
-            type="button"
-            role="menuitem"
-            className="danger"
-            onClick={menuAction(() =>
-              runAndShow(
-                () => (menu.item.kind === 'folder' ? driveApi.trashFolder(menu.item.id, token) : driveApi.trashFile(menu.item.id, token)),
-                `"${menu.item.name}"을(를) 휴지통으로 옮겼어요.`,
-              ),
-            )}
-          >
-            🗑️ 휴지통으로
-          </button>
+          {itemRank(menu.item) >= 2 && (
+            <>
+              <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'rename', item: menu.item }))}>✏️ 이름 바꾸기</button>
+              <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'move', item: menu.item }))}>📦 옮기기</button>
+            </>
+          )}
+          {menu.item.kind === 'folder' && itemRank(menu.item) >= 3 && (
+            <button type="button" role="menuitem" onClick={menuAction(() => setDialog({ type: 'permissions', folderId: menu.item.id }))}>🔐 권한 설정</button>
+          )}
+          {itemRank(menu.item) >= 2 && (
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={menuAction(() =>
+                runAndShow(
+                  () => (menu.item.kind === 'folder' ? driveApi.trashFolder(menu.item.id, token) : driveApi.trashFile(menu.item.id, token)),
+                  `"${menu.item.name}"을(를) 휴지통으로 옮겼어요.`,
+                ),
+              )}
+            >
+              🗑️ 휴지통으로
+            </button>
+          )}
         </ContextMenu>
       )}
 
@@ -363,6 +396,7 @@ export default function DrivePage({ trash = false }) {
         <MoveDialog
           item={dialog.item}
           folders={tree}
+          canRoot={canCreateRoot}
           onClose={() => setDialog(null)}
           onSubmit={async (target) => {
             const { item } = dialog;
@@ -375,6 +409,18 @@ export default function DrivePage({ trash = false }) {
             );
             if (!message) setDialog(null);
             return message;
+          }}
+        />
+      )}
+      {dialog?.type === 'permissions' && (
+        <PermissionDialog
+          folderId={dialog.folderId}
+          token={token}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
+            setNotice('권한을 저장했어요.');
+            reload();
           }}
         />
       )}

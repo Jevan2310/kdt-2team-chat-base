@@ -10,6 +10,15 @@ INSERT INTO rooms (name, type) VALUES
 INSERT INTO departments (name, sort_order) VALUES
   ('경영지원팀', 10), ('인사팀', 20), ('기획팀', 30), ('개발팀', 40), ('디자인팀', 50), ('영업팀', 60);
 
--- 공유 드라이브 기본 폴더 (권한은 10단계에서)
+-- 공유 드라이브 기본 폴더
 INSERT INTO folders (id, parent_id, name) VALUES
   (1, NULL, '공통'), (2, 1, '양식'), (3, NULL, '개발팀'), (4, NULL, '디자인팀'), (5, NULL, '인사팀');
+
+-- 기본 폴더 권한: 공통=전체 보기, 공통/양식=경영지원팀 편집(+공통 보기 상속), 팀 폴더=그 팀 편집, 인사팀=상속 끊음 🔒
+UPDATE folders SET inherit_permissions = FALSE WHERE id = 5 AND name = '인사팀';
+INSERT IGNORE INTO folder_permissions (folder_id, subject_type, user_id, department, subject_key, level)
+          SELECT id, 'all',        NULL, NULL,         'all',             'view' FROM folders WHERE id = 1 AND name = '공통'
+UNION ALL SELECT id, 'department', NULL, '경영지원팀', 'dept:경영지원팀', 'edit' FROM folders WHERE id = 2 AND name = '양식'
+UNION ALL SELECT id, 'department', NULL, '개발팀',     'dept:개발팀',     'edit' FROM folders WHERE id = 3 AND name = '개발팀'
+UNION ALL SELECT id, 'department', NULL, '디자인팀',   'dept:디자인팀',   'edit' FROM folders WHERE id = 4 AND name = '디자인팀'
+UNION ALL SELECT id, 'department', NULL, '인사팀',     'dept:인사팀',     'edit' FROM folders WHERE id = 5 AND name = '인사팀';

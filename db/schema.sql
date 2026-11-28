@@ -7,6 +7,7 @@ CREATE DATABASE IF NOT EXISTS team_chat
 USE team_chat;
 
 DROP TABLE IF EXISTS schema_migrations;
+DROP TABLE IF EXISTS folder_permissions;
 DROP TABLE IF EXISTS file_activity;
 DROP TABLE IF EXISTS files;
 DROP TABLE IF EXISTS folders;
@@ -93,7 +94,7 @@ CREATE TABLE folders (
   id                   INT AUTO_INCREMENT PRIMARY KEY,
   parent_id            INT NULL,
   name                 VARCHAR(100) NOT NULL,
-  inherit_permissions  BOOLEAN NOT NULL DEFAULT TRUE,      -- 10단계: FALSE 면 위 폴더 권한을 이어받지 않음 🔒
+  inherit_permissions  BOOLEAN NOT NULL DEFAULT TRUE,      -- FALSE 면 위 폴더 권한을 이어받지 않음 🔒 (folder_permissions 참고)
   bot_enabled          BOOLEAN NOT NULL DEFAULT FALSE,     -- 12단계: 봇이 이 폴더 문서를 읽어도 되는지
   created_by           INT NULL,
   created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -138,6 +139,28 @@ CREATE TABLE file_activity (
   INDEX idx_activity_time (created_at)
 );
 
+-- 폴더 권한 (10단계). 한 줄 = "이 폴더에 이 대상은 이 등급"
+-- 대상: user(사람) / department(부서) / all(전체). 등급: view 보기 < edit 편집 < manage 관리
+-- 위 폴더 권한은 아래로 이어진다 (folders.inherit_permissions = FALSE 인 폴더에서 끊김)
+CREATE TABLE folder_permissions (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  folder_id     INT NOT NULL,
+  subject_type  VARCHAR(20) NOT NULL,                     -- user / department / all
+  user_id       INT NULL,                                 -- subject_type = user 일 때
+  department    VARCHAR(50) NULL,                         -- subject_type = department 일 때
+  subject_key   VARCHAR(80) NOT NULL,                     -- 'user:3' / 'dept:개발팀' / 'all' — 같은 대상을 두 번 넣지 않게
+  level         VARCHAR(10) NOT NULL,                     -- view / edit / manage
+  granted_by    INT NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_folder_subject (folder_id, subject_key),
+  FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_perm_department FOREIGN KEY (department) REFERENCES departments(name) ON UPDATE CASCADE ON DELETE CASCADE,
+  FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT chk_perm_subject CHECK (subject_type IN ('user', 'department', 'all')),
+  CONSTRAINT chk_perm_level CHECK (level IN ('view', 'edit', 'manage'))
+);
+
 -- DB 변경 기록 (npm run db:migrate 가 씀). 이 schema.sql 에는 아래 파일들 내용이 이미 들어 있으므로 "한 것"으로 기록해 둔다.
 -- ⚠️ db/migrations 에 새 파일을 추가하면: 그 내용을 이 파일에도 반영하고, 아래 INSERT 에 한 줄 추가할 것
 CREATE TABLE schema_migrations (
@@ -148,4 +171,5 @@ CREATE TABLE schema_migrations (
 INSERT INTO schema_migrations (version, name) VALUES
   ('007', '007_메시지_수정_삭제_반응.sql'),
   ('008', '008_프로필_사진.sql'),
-  ('009', '009_부서목록_공유드라이브.sql');
+  ('009', '009_부서목록_공유드라이브.sql'),
+  ('010', '010_폴더_권한.sql');

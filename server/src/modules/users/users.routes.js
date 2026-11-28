@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
 import { publicProfile } from '../auth/auth.service.js';
+import { pool } from '../../db.js';
 import { checkProfile, isUnknownDepartment, UNKNOWN_DEPARTMENT } from './users.rules.js';
 import { AVATAR_MAX_BYTES, detectImageType, updateProfile, saveAvatar, clearAvatar } from './users.service.js';
 
@@ -16,6 +17,14 @@ function announce(user) {
     // 소켓 준비 전이면 알림만 건너뜀
   }
 }
+
+// GET /api/users → { users: [{ id, nickname, department, role, avatarUrl }] }  (권한 줄 때 사람 고르기용, 공개 정보만)
+router.get('/', async (req, res) => {
+  const [rows] = await pool.query(
+    'SELECT id, nickname, department, role, avatar_url AS avatarUrl FROM users ORDER BY department IS NULL, department, nickname',
+  );
+  res.json({ users: rows.map(publicProfile) });
+});
 
 // PATCH /api/users/me  { nickname?, department? } → { user }  (보낸 칸만 바뀜. department: null 이면 '부서 없음')
 router.patch('/me', async (req, res) => {

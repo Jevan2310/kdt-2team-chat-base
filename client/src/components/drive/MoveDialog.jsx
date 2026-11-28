@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import Dialog from '../common/Dialog.jsx';
-import { groupByParent } from '../../lib/drive.js';
+import { groupByParent, rankOf } from '../../lib/drive.js';
 
 // 옮길 위치 고르기. 폴더는 자기 자신·자기 아래로는 못 옮기고, 파일은 맨 위에 둘 수 없다(폴더 안에만)
-export default function MoveDialog({ item, folders, onSubmit, onClose }) {
+// 편집 권한이 있는 폴더만 고를 수 있고, 맨 위는 관리자(canRoot)만
+export default function MoveDialog({ item, folders, canRoot, onSubmit, onClose }) {
   const children = useMemo(() => groupByParent(folders), [folders]);
   const currentParent = item.kind === 'folder' ? (item.parentId ?? null) : item.folderId;
   const [target, setTarget] = useState(currentParent);
@@ -35,7 +36,7 @@ export default function MoveDialog({ item, folders, onSubmit, onClose }) {
 
   const renderLevel = (parentId, depth) =>
     (children.get(parentId) ?? []).flatMap((f) => [
-      option(f.id, `📁 ${f.name}`, depth, blocked.has(f.id)),
+      option(f.id, `📁 ${f.name}${f.locked ? ' 🔒' : ''}`, depth, blocked.has(f.id) || rankOf(f.level) < 2),
       ...(blocked.has(f.id) ? [] : renderLevel(f.id, depth + 1)),
     ]);
 
@@ -49,7 +50,7 @@ export default function MoveDialog({ item, folders, onSubmit, onClose }) {
   return (
     <Dialog title={`"${item.name}" 옮기기`} onClose={onClose}>
       <div className="move-list">
-        {item.kind === 'folder' && option(null, '🏠 드라이브 맨 위', 0, false)}
+        {item.kind === 'folder' && option(null, '🏠 드라이브 맨 위', 0, !canRoot)}
         {renderLevel(null, item.kind === 'folder' ? 1 : 0)}
       </div>
       {error && <p className="form-error">{error}</p>}

@@ -27,7 +27,10 @@ export default function FolderTree({ folders, currentId, openIds = [], onFolderM
             ) : (
               <span className="tree-toggle" />
             )}
-            <Link to={`/drive/${f.id}`}>📁 {f.name}</Link>
+            <Link to={`/drive/${f.id}`} title={f.locked ? '위 폴더 권한을 이어받지 않는 폴더' : undefined}>
+              📁 {f.name}
+              {f.locked && ' 🔒'}
+            </Link>
           </div>
           {open && <div className="tree-children">{renderLevel(f.id, depth + 1)}</div>}
         </div>
