@@ -1,7 +1,7 @@
 import express, { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
-import { checkProfile } from './users.rules.js';
+import { checkProfile, isUnknownDepartment, UNKNOWN_DEPARTMENT } from './users.rules.js';
 import { AVATAR_MAX_BYTES, detectImageType, updateProfile, saveAvatar, clearAvatar } from './users.service.js';
 
 const router = Router();
@@ -17,9 +17,14 @@ function announce(user) {
 router.patch('/me', async (req, res) => {
   const error = checkProfile(req.body ?? {});
   if (error) return res.status(400).json({ message: error });
-  const user = await updateProfile(req.user.id, req.body);
-  announce(user);
-  res.json({ user });
+  try {
+    const user = await updateProfile(req.user.id, req.body);
+    announce(user);
+    res.json({ user });
+  } catch (err) {
+    if (isUnknownDepartment(err)) return res.status(400).json({ message: UNKNOWN_DEPARTMENT });
+    throw err;
+  }
 });
 
 // PUT /api/users/me/avatar  본문 = 이미지 파일 그대로 (Content-Type: image/jpeg | image/png | image/webp) → { user }

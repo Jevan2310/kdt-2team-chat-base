@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createUser, checkLogin, signToken } from './auth.service.js';
 import { requireAuth } from '../../middleware/requireAuth.js';
-import { checkProfile } from '../users/users.rules.js';
+import { checkProfile, isUnknownDepartment, UNKNOWN_DEPARTMENT } from '../users/users.rules.js';
 
 const router = Router();
 
@@ -24,6 +24,7 @@ router.post('/signup', async (req, res) => {
     res.status(201).json({ token: signToken(user), user });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: '이미 쓰는 아이디예요.' });
+    if (isUnknownDepartment(err)) return res.status(400).json({ message: UNKNOWN_DEPARTMENT });
     throw err;
   }
 });

@@ -3,6 +3,7 @@ import { useAuth } from '../auth/useAuth.js';
 import { api } from '../lib/api.js';
 import { toSquareJpeg } from '../lib/image.js';
 import Avatar from '../components/users/Avatar.jsx';
+import { useDepartments } from '../lib/useDepartments.js';
 
 // 내 프로필: 사진 바꾸기·지우기, 이름·부서 수정. 바꾸면 서버가 user:updated 로 모두에게 알린다.
 export default function ProfilePage() {
@@ -11,6 +12,7 @@ export default function ProfilePage() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
+  const departments = useDepartments();
 
   const unchanged = form.nickname.trim() === user.nickname && form.department.trim() === (user.department ?? '');
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -45,7 +47,7 @@ export default function ProfilePage() {
   const onSubmit = (e) => {
     e.preventDefault();
     run(
-      () => api('/users/me', { method: 'PATCH', body: { nickname: form.nickname, department: form.department }, token }),
+      () => api('/users/me', { method: 'PATCH', body: { nickname: form.nickname, department: form.department || null }, token }),
       '저장했어요.',
     );
   };
@@ -81,7 +83,12 @@ export default function ProfilePage() {
         </label>
         <label>
           부서 <small>선택</small>
-          <input name="department" value={form.department} onChange={onChange} maxLength={50} placeholder="예: 개발팀" />
+          <select name="department" value={form.department} onChange={onChange}>
+            <option value="">부서 없음</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.name}>{d.name}</option>
+            ))}
+          </select>
         </label>
         <button type="submit" disabled={busy || unchanged || !form.nickname.trim()}>저장</button>
       </form>

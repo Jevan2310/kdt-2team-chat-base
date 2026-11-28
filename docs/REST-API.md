@@ -13,6 +13,7 @@
 | PATCH | `/api/users/me` | ✅ | `{ nickname, department? }` | `{ user }` + 소켓 `user:updated` | 400 입력 규칙 |
 | PUT | `/api/users/me/avatar` | ✅ | 본문 = 이미지 파일 그대로, `Content-Type: image/jpeg \| image/png \| image/webp` (2MB 이하) | `{ user }` + 소켓 `user:updated` | 400 사진이 아님, 413 너무 큼 |
 | DELETE | `/api/users/me/avatar` | ✅ | — | `{ user }` (`avatarUrl: null`) + 소켓 `user:updated` | — |
+| GET | `/api/departments` | — | — | `{ departments: [{ id, name }] }` | — |
 | GET | `/api/rooms` | ✅ | — | `{ rooms: [{ id, name, type, createdAt, memberCount, joined, unreadCount }] }` | — |
 | POST | `/api/rooms` | ✅ | `{ name }` (1~30자) | `201 { room }` + 소켓 `room:created` | 400 이름 규칙 |
 | GET | `/api/rooms/:roomId` | ✅ | — | `{ room, members: [{ id, nickname, department, role, avatarUrl, joinedAt, lastReadMessageId }], joined }` | 404 없는 방 |
@@ -31,6 +32,29 @@
 - `username`: 영어 소문자·숫자·`_` 4~20자, 중복 불가
 - `password`: 6자 이상 (DB에는 bcrypt로 암호화해서 저장)
 - `nickname`: 1~20자 · `department`: 선택, 50자 이하 (회원가입·프로필 수정 공통, `modules/users/users.rules.js`)
+
+## 공유 드라이브 API (9단계, 모두 로그인 필요)
+
+| 메서드 | 주소 | 보내는 값 | 받는 값 | 오류 |
+|---|---|---|---|---|
+| GET | `/api/drive/tree` | — | `{ folders: [{ id, parentId, name }] }` (휴지통·휴지통 안 폴더 제외) | — |
+| GET | `/api/drive/folders/:id/contents` | `:id` = 폴더 id 또는 `root` | `{ folder, path: [{ id, name }], folders, files }` (맨 위에는 폴더만) | 404 |
+| POST | `/api/drive/folders` | `{ parentId: null\|id, name }` (1~100자, `/ \` 금지, 같은 위치 같은 이름 금지) | `201 { folder }` | 400, 404, 409 |
+| PATCH | `/api/drive/folders/:id` | `{ name?, parentId? }` (`parentId: null` = 맨 위로) | `{ folder }` | 400 자기 안으로 옮기기, 409 이름 겹침 |
+| DELETE | `/api/drive/folders/:id` | — | `{ ok }` → 휴지통 (아래 폴더·파일도 같이 숨겨짐) | 404 |
+| POST | `/api/drive/folders/:id/files` | multipart, 칸 이름 `files` (최대 20개, 하나 50MB) | `201 { files: [{ id, name, size }] }` | 400 실행 파일·폴더 없음, 413 너무 큼 |
+| GET | `/api/drive/files/:id/download` | — | 파일 (`Content-Disposition: attachment`, `application/octet-stream`, `nosniff`) | 404 |
+| PATCH | `/api/drive/files/:id` | `{ name?, folderId? }` | `{ file }` | 400, 404 |
+| DELETE | `/api/drive/files/:id` | — | `{ ok }` → 휴지통 | 404 |
+| GET | `/api/drive/trash` | — | `{ folders, files }` (직접 지운 것만, `from` = 원래 위치) | — |
+| POST | `/api/drive/trash/folders\|files/:id/restore` | — | `{ ok }` | 409 위 폴더가 휴지통에 있음·이름 겹침 |
+| DELETE | `/api/drive/trash/folders\|files/:id` | — | `{ ok }` 영구 삭제 (폴더면 아래 전부, 디스크 파일까지) | 404 휴지통에 없음 |
+
+- file 모양: `{ id, folderId, name, mimeType, size, createdAt, updatedAt, uploadedBy: { id, nickname } }`
+- 바뀔 때마다 소켓 `drive:changed` → 화면이 다시 불러옴
+- 모든 동작은 `file_activity` 표에 기록 (누가, 무엇을, 언제)
+- 파일은 `server/storage/files/<무작위 32자>`에 저장하고 원래 이름은 DB에만 둔다. 실행 파일(exe·msi·bat·ps1·jar·apk·dmg 등)은 막는다
+- 10단계에서 모든 주소에 폴더 권한 확인이 들어간다
 
 ## 프로필 사진 규칙
 - `avatarUrl`: 없으면 `null` → 화면은 이름 첫 글자 + id별 색으로 그림

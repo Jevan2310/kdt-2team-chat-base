@@ -6,11 +6,22 @@ CREATE DATABASE IF NOT EXISTS team_chat
   DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE team_chat;
 
+DROP TABLE IF EXISTS file_activity;
+DROP TABLE IF EXISTS files;
+DROP TABLE IF EXISTS folders;
 DROP TABLE IF EXISTS message_reactions;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS room_members;
 DROP TABLE IF EXISTS rooms;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS departments;
+
+-- 부서 목록 (권한의 기준이라 자유 입력 대신 목록에서 고른다)
+CREATE TABLE departments (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(50) NOT NULL UNIQUE,
+  sort_order  INT NOT NULL DEFAULT 0                       -- 화면 목록 순서
+);
 
 -- 사용자
 CREATE TABLE users (
@@ -18,10 +29,12 @@ CREATE TABLE users (
   username      VARCHAR(30)  NOT NULL UNIQUE,              -- 로그인 아이디
   password_hash VARCHAR(100) NOT NULL,                     -- bcrypt 결과 (비밀번호 원문 저장 금지)
   nickname      VARCHAR(30)  NOT NULL,                     -- 화면에 보이는 이름
-  department    VARCHAR(50)  NULL,                         -- 부서 (사내 채팅)
+  department    VARCHAR(50)  NULL,                         -- 부서 이름 (departments.name 중 하나)
   role          VARCHAR(20)  NOT NULL DEFAULT 'user',      -- 확장 칸: user / admin / bot …
   avatar_url    VARCHAR(255) NULL,                         -- 프로필 사진 주소 (/uploads/avatars/…). 없으면 이름 첫 글자
-  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- 부서 이름이 바뀌면 사람들 부서도 같이 바뀌고, 부서가 없어지면 '부서 없음'
+  FOREIGN KEY (department) REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 -- 채팅방
@@ -70,4 +83,56 @@ CREATE TABLE message_reactions (
   PRIMARY KEY (message_id, user_id, emoji),
   FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ── 공유 드라이브 (9단계~) ──
+
+-- 폴더 (parent_id 로 트리). 최상위 폴더는 parent_id = NULL
+CREATE TABLE folders (
+  id                   INT AUTO_INCREMENT PRIMARY KEY,
+  parent_id            INT NULL,
+  name                 VARCHAR(100) NOT NULL,
+  inherit_permissions  BOOLEAN NOT NULL DEFAULT TRUE,      -- 10단계: FALSE 면 위 폴더 권한을 이어받지 않음 🔒
+  bot_enabled          BOOLEAN NOT NULL DEFAULT FALSE,     -- 12단계: 봇이 이 폴더 문서를 읽어도 되는지
+  created_by           INT NULL,
+  created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at           DATETIME NULL,                      -- 휴지통에 넣은 시각 (하위 폴더·파일은 같이 숨겨짐)
+  deleted_by           INT NULL,
+  FOREIGN KEY (parent_id) REFERENCES folders(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_folder_parent (parent_id)
+);
+
+-- 파일 (실제 내용은 server/storage/files/<stored_name>, 원래 이름은 DB에만)
+CREATE TABLE files (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  folder_id      INT NOT NULL,
+  original_name  VARCHAR(255) NOT NULL,
+  stored_name    CHAR(32) NOT NULL UNIQUE,                 -- 서버가 정한 무작위 이름 (확장자 없음)
+  mime_type      VARCHAR(100) NOT NULL,
+  size_bytes     BIGINT NOT NULL,
+  uploaded_by    INT NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at     DATETIME NULL,
+  deleted_by     INT NULL,
+  FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_file_folder (folder_id)
+);
+
+-- 활동 기록: 누가 언제 무엇을 했나 (폴더·파일이 영구 삭제돼도 기록은 남도록 FK 없음)
+CREATE TABLE file_activity (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT NULL,
+  action      VARCHAR(20) NOT NULL,                        -- upload / download / rename / move / delete / restore / purge / create_folder
+  folder_id   INT NULL,
+  file_id     INT NULL,
+  detail      JSON NULL,                                   -- 예: { "from": "옛 이름", "to": "새 이름" }
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_activity_time (created_at)
 );

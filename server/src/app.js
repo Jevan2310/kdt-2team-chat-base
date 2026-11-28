@@ -5,6 +5,8 @@ import healthRoutes from './modules/health/health.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import roomRoutes from './modules/rooms/rooms.routes.js';
 import userRoutes from './modules/users/users.routes.js';
+import departmentRoutes from './modules/departments/departments.routes.js';
+import driveRoutes from './modules/drive/drive.routes.js';
 
 export const app = express();
 
@@ -16,6 +18,8 @@ app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/drive', driveRoutes);
 
 // 올린 파일(프로필 사진). nosniff: 브라우저가 내용을 보고 다른 형식(HTML 등)으로 해석하지 못하게
 app.use(

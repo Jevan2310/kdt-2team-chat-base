@@ -9,6 +9,7 @@ import SignupPage from './pages/SignupPage.jsx';
 import ChatLayout, { NoRoomSelected } from './pages/ChatLayout.jsx';
 import ChatRoomPage from './pages/ChatRoomPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
+import DrivePage from './pages/DrivePage.jsx';
 import Avatar from './components/users/Avatar.jsx';
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Link to="/rooms">
           채팅방{total > 0 && <span className="badge-unread" aria-label={`안 읽은 메시지 ${total}개`}>{total > 99 ? '99+' : total}</span>}
         </Link>
+        <Link to="/drive">드라이브</Link>
         <span className="topnav-right">
           {user ? (
             <>
@@ -47,6 +49,9 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+        <Route path="/drive" element={<RequireAuth><DrivePage /></RequireAuth>} />
+        <Route path="/drive/trash" element={<RequireAuth><DrivePage key="trash" trash /></RequireAuth>} />
+        <Route path="/drive/:folderId" element={<RequireAuth><DrivePage /></RequireAuth>} />
         <Route path="/rooms" element={<RequireAuth><ChatLayout /></RequireAuth>}>
           <Route index element={<NoRoomSelected />} />
           <Route path=":roomId" element={<ChatRoomPage />} />

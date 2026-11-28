@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.js';
+import { useDepartments } from '../lib/useDepartments.js';
 
 export default function SignupPage() {
   const { user, signup } = useAuth();
@@ -8,6 +9,7 @@ export default function SignupPage() {
   const [form, setForm] = useState({ username: '', password: '', passwordCheck: '', nickname: '', department: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const departments = useDepartments();
 
   if (user) return <Navigate to="/rooms" replace />;
 
@@ -23,7 +25,7 @@ export default function SignupPage() {
     setSubmitting(true);
     try {
       const { passwordCheck: _, ...body } = form;
-      await signup({ ...body, username: body.username.trim() });
+      await signup({ ...body, username: body.username.trim(), department: body.department || null });
       navigate('/rooms', { replace: true });
     } catch (err) {
       setError(err.message);
@@ -54,7 +56,12 @@ export default function SignupPage() {
         </label>
         <label>
           부서 <small>선택</small>
-          <input name="department" value={form.department} onChange={onChange} placeholder="예: 개발팀" />
+          <select name="department" value={form.department} onChange={onChange}>
+            <option value="">부서 없음</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.name}>{d.name}</option>
+            ))}
+          </select>
         </label>
         {error && <p className="form-error">{error}</p>}
         <button type="submit" disabled={submitting}>{submitting ? '가입 중…' : '가입하기'}</button>
