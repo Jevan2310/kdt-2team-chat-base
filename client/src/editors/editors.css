@@ -27,11 +27,16 @@
 .pdf-container .page { max-width: revert-layer; margin: revert-layer; padding: revert-layer; }
 
 /* ── 가운데 편집 영역: 칸(group) 나란히 + 탭 (VS Code 처럼) ── */
-.editor-area { flex: 1; min-height: 0; display: flex; }
-.editor-group-wrap { position: relative; flex-basis: 0; min-width: 0; display: flex; }
-.group-splitter { width: 5px; margin-left: -3px; flex-shrink: 0; cursor: col-resize; z-index: 2; touch-action: none; border-left: 1px solid var(--border); }
+.editor-area { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* 칸은 절대 위치(%) — 왼쪽·위에 이웃 칸이 있으면 그쪽에 선 */
+.editor-group-wrap { position: absolute; display: flex; min-width: 0; min-height: 0; overflow: hidden; } /* 문서 미리보기가 옆 칸으로 넘치지 않게 */
+.editor-group-wrap.has-left { border-left: 1px solid var(--border); }
+.editor-group-wrap.has-top { border-top: 1px solid var(--border); }
+.group-splitter { position: absolute; z-index: 6; touch-action: none; }
+.group-splitter.row { width: 7px; margin-left: -3px; cursor: col-resize; }
+.group-splitter.col { height: 7px; margin-top: -3px; cursor: row-resize; }
 .group-splitter:hover, .group-splitter:active { background: rgb(59 111 216 / 0.35); }
-.editor-group { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface); }
+.editor-group { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
 .tab-bar { display: flex; align-items: stretch; min-height: 36px; background: #f3f4f6; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
 .tab-bar.drop-target { background: #e4ecfb; }
 .tab-bar-fill { flex: 1; min-width: 12px; }
@@ -59,9 +64,11 @@
 .welcome { max-width: 420px; color: var(--text); }
 .welcome-icon { font-size: 44px; margin-bottom: 8px; }
 .welcome ul { text-align: left; font-size: 13px; line-height: 1.9; padding-left: 18px; }
-.drop-zone { position: absolute; top: 6px; bottom: 6px; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--primary); border-radius: 10px; background: rgb(59 111 216 / 0.1); color: var(--primary); font-weight: 700; pointer-events: none; animation: fade-in 0.12s ease-out; z-index: 5; }
-.drop-zone.center { left: 6px; right: 6px; }
-.drop-zone.right { left: 50%; right: 6px; }
+.drop-zone { position: absolute; inset: 6px; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--primary); border-radius: 10px; background: rgb(59 111 216 / 0.1); color: var(--primary); font-weight: 700; pointer-events: none; animation: fade-in 0.12s ease-out; z-index: 5; }
+.drop-zone.right { left: 50%; }
+.drop-zone.left { right: 50%; }
+.drop-zone.down { top: 50%; }
+.drop-zone.up { bottom: 50%; }
 
 .viewer-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .viewer-banner { margin: 0; padding: 6px 12px; font-size: 13px; background: #fff6e0; border-bottom: 1px solid #f1dfae; }
@@ -78,7 +85,7 @@
 /* 휴대폰: 칸은 지금 보는 것 하나만 (나누기 없음) */
 @media (max-width: 767px) {
   .editor-group-wrap:not(.focused) { display: none; }
-  .editor-group-wrap { flex-grow: 1 !important; }
+  .editor-group-wrap { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border: none !important; }
   .group-splitter { display: none; }
   .viewer-header { gap: 6px; }
 }

@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ContextMenu from '../components/common/ContextMenu.jsx';
 import Dialog from '../components/common/Dialog.jsx';
-import { MAX_GROUPS } from './useEditorLayout.js';
+import { MAX_GROUPS, computeRects, leaves, sizesAt } from './useEditorLayout.js';
 
 // [편집기 시험판 A] 가운데 편집 영역 (VS Code 처럼)
-// - 칸(group)을 최대 3개까지 나란히. 칸마다 탭 여러 개
-// - 나누기: 탭 바의 ⫿ 버튼, Ctrl+\ (⌘\), 탭을 칸 오른쪽 끝으로 끌어다 놓기, 왼쪽 트리의 파일을 끌어다 놓기
-// - 칸 사이 경계선을 끌어 너비 조절
+// - 칸(group)을 좌우·위아래로 최대 6개까지. 칸마다 탭 여러 개
+// - 나누기: 탭 바의 ▥(오른쪽)·▤(아래) 버튼, Ctrl+\ (오른쪽), Ctrl+Shift+\ (아래),
+//   탭이나 왼쪽 트리의 파일을 칸의 위·아래·왼쪽·오른쪽 끝으로 끌어다 놓기
+// - 칸 사이 경계선을 끌어 너비·높이 조절
+// - 칸은 모두 한 부모 안에 절대 위치로 그린다 → 나누거나 합쳐도 칸이 새로 만들어지지 않아 고치던 내용이 그대로
 // - 탭 내용은 닫을 때까지 살려 둔다(숨김) → 다른 탭을 봤다 와도 고치던 내용이 그대로
 // renderTab(tab, { groupId, focused, visible, onDirtyChange }) 로 탭 내용을, tabInfo(tab) → { label, icon, title } 로 탭 이름을 받는다
 export const DRAG_TAB = 'application/x-drive-tab';
 export const DRAG_FILE = 'application/x-drive-file';
+// 끌어다 놓을 때 칸 끝 → 그쪽에 새 칸 (안내 글자)
+const SIDES = { right: '오른쪽에 나누기', left: '왼쪽에 나누기', down: '아래에 나누기', up: '위에 나누기' };
 
 export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNotice, emptyHint, leftSlot }) {
   const [dirty, setDirty] = useState({}); // { 'groupId:key': true }
   const [confirm, setConfirm] = useState(null); // { groupId, key } 저장 안 한 탭 닫기 확인
   const [menu, setMenu] = useState(null); // { anchor, groupId, key }
-  const [dropHint, setDropHint] = useState(null); // { groupId, zone: 'center' | 'right' | 'tabs' }
+  const [dropHint, setDropHint] = useState(null); // { groupId, zone: 'center' | 'tabs' | 'right' | 'left' | 'down' | 'up' }
   const areaRef = useRef(null);
   const canSplit = layout.groups.length < MAX_GROUPS;
 
@@ -41,12 +45,12 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
     dispatch({ type: 'close', groupId, key });
   };
 
-  // Ctrl+\ (⌘\) → 지금 탭을 오른쪽에 하나 더
+  // Ctrl+\ (⌘\) → 지금 탭을 오른쪽에 하나 더, Shift 까지 누르면 아래에
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+      if ((e.ctrlKey || e.metaKey) && (e.code === 'Backslash' || e.key === '\\' || e.key === '|')) {
         e.preventDefault();
-        dispatch({ type: 'split' });
+        dispatch({ type: 'split', side: e.shiftKey ? 'down' : 'right' });
       }
     };
     window.addEventListener('keydown', onKey);
@@ -54,7 +58,7 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
   }, [dispatch]);
 
   // 숨겨 두었던 탭이 다시 보이면 편집기들이 크기를 다시 재게 (표·사진 편집기는 숨김 상태에서 크기를 0으로 잼)
-  const visibleKey = layout.groups.map((g) => `${g.id}:${g.active}`).join('|') + layout.sizes.join(',');
+  const visibleKey = layout.groups.map((g) => `${g.id}:${g.active}`).join('|') + JSON.stringify(layout.tree);
   useEffect(() => {
     const id = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     return () => cancelAnimationFrame(id);
@@ -76,11 +80,15 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
   };
   const isDirtyDrag = (data) => data && dirty[dirtyKey(data.groupId, data.key)];
 
-  // 놓을 자리: 탭 바 = 그 칸에, 본문 오른쪽 30% = 오른쪽에 새 칸, 나머지 본문 = 그 칸에
+  // 놓을 자리: 탭 바 = 그 칸에, 본문의 위·아래·왼쪽·오른쪽 끝(25%) = 그쪽에 새 칸, 가운데 = 그 칸에
   const zoneOf = (e, area) => {
     if (area !== 'body') return 'tabs';
+    if (!canSplit) return 'center';
     const r = e.currentTarget.getBoundingClientRect();
-    return canSplit && e.clientX > r.right - r.width * 0.3 ? 'right' : 'center';
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    const [side, dist] = Object.entries({ left: x, right: 1 - x, up: y, down: 1 - y }).sort((a, b) => a[1] - b[1])[0];
+    return dist < 0.25 ? side : 'center';
   };
   const onGroupDragOver = (e, groupId, area) => {
     if (!dragKind(e)) return;
@@ -103,16 +111,16 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
         onNotice?.('저장하지 않은 탭은 다른 칸으로 옮길 수 없어요. 먼저 저장해 주세요.');
         return;
       }
-      if (zone === 'right') {
+      if (SIDES[zone]) {
         if (isDirtyDrag(data)) return onNotice?.('저장하지 않은 탭은 다른 칸으로 옮길 수 없어요. 먼저 저장해 주세요.');
-        dispatch({ type: 'moveToNewGroup', fromGroupId: data.groupId, key: data.key, afterGroupId: groupId });
+        dispatch({ type: 'moveToNewGroup', fromGroupId: data.groupId, key: data.key, targetGroupId: groupId, side: zone });
       } else {
         dispatch({ type: 'move', fromGroupId: data.groupId, key: data.key, toGroupId: groupId, index });
       }
     } else {
       const tab = read(e, DRAG_FILE);
       if (!tab) return;
-      if (zone === 'right') dispatch({ type: 'openToSide', tab, fromGroupId: groupId });
+      if (SIDES[zone]) dispatch({ type: 'openToSide', tab, fromGroupId: groupId, side: zone });
       else dispatch({ type: 'open', tab, groupId, index });
     }
   };
@@ -120,24 +128,27 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
     if (!e.currentTarget.contains(e.relatedTarget)) setDropHint(null);
   };
 
-  // ── 칸 너비 조절 (경계선 끌기) ──
-  const startResize = (e, i) => {
+  // ── 칸 크기 조절 (경계선 끌기) ── sp: computeRects 가 준 경계선 하나 (어느 묶음의 몇 번째 칸 사이인지)
+  const startResize = (e, sp) => {
     e.preventDefault();
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
-    const width = areaRef.current.getBoundingClientRect().width;
-    const start = e.clientX;
-    const base = [...layout.sizes];
+    const area = areaRef.current.getBoundingClientRect();
+    const row = sp.dir === 'row';
+    const nodePx = row ? area.width * sp.node.w : area.height * sp.node.h;
+    const start = row ? e.clientX : e.clientY;
+    const base = [...sizesAt(layout.tree, sp.path)];
     const total = base.reduce((a, b) => a + b, 0);
-    const min = total * 0.15;
+    const i = sp.index;
+    const pair = base[i] + base[i + 1];
+    const min = Math.min(pair / 2, Math.max(total * 0.05, (total * (row ? 160 : 110)) / nodePx)); // 칸이 너무 작아지지 않게
     const onMove = (ev) => {
-      const delta = ((ev.clientX - start) / width) * total;
-      const pair = base[i] + base[i + 1];
-      const left = Math.min(pair - min, Math.max(min, base[i] + delta));
+      const delta = (((row ? ev.clientX : ev.clientY) - start) / nodePx) * total;
+      const first = Math.min(pair - min, Math.max(min, base[i] + delta));
       const sizes = [...base];
-      sizes[i] = left;
-      sizes[i + 1] = pair - left;
-      dispatch({ type: 'resize', sizes });
+      sizes[i] = first;
+      sizes[i + 1] = pair - first;
+      dispatch({ type: 'resize', path: sp.path, sizes });
     };
     const onUp = () => {
       handle.removeEventListener('pointermove', onMove);
@@ -149,26 +160,25 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
     handle.addEventListener('pointercancel', onUp);
   };
 
+  const { panes, splitters } = computeRects(layout.tree);
+  const order = leaves(layout.tree);
+  const pct = (v) => `${v * 100}%`;
   const onlyEmpty = layout.groups.length === 1 && layout.groups[0].tabs.length === 0;
 
   return (
     <div className="editor-area" ref={areaRef} onDragEnd={() => setDropHint(null)}>
-      {layout.groups.map((g, gi) => {
+      {layout.groups.map((g) => {
         const focusedGroup = layout.activeGroup === g.id;
+        const r = panes[g.id] ?? { x: 0, y: 0, w: 1, h: 1 };
         return (
-          <div key={g.id} className={`editor-group-wrap ${focusedGroup ? 'focused' : ''}`} style={{ flexGrow: layout.sizes[gi] ?? 1 }}>
-            {gi > 0 && (
-              <div
-                className="group-splitter"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="칸 너비 조절"
-                onPointerDown={(e) => startResize(e, gi - 1)}
-              />
-            )}
+          <div
+            key={g.id}
+            className={`editor-group-wrap ${focusedGroup ? 'focused' : ''} ${r.x > 0 ? 'has-left' : ''} ${r.y > 0 ? 'has-top' : ''}`}
+            style={{ left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h) }}
+          >
             <section
               className={`editor-group ${focusedGroup ? 'focused' : ''}`}
-              aria-label={`편집 칸 ${gi + 1}`}
+              aria-label={`편집 칸 ${order.indexOf(g.id) + 1}`}
               onPointerDownCapture={() => dispatch({ type: 'focusGroup', groupId: g.id })}
               onFocusCapture={() => dispatch({ type: 'focusGroup', groupId: g.id })}
             >
@@ -228,9 +238,14 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
                 })}
                 <div className="tab-bar-fill" />
                 {g.active && canSplit && (
-                  <button type="button" className="tab-bar-button hide-sm" title="오른쪽으로 나누기 (Ctrl+\)" aria-label="오른쪽으로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id })}>
-                    ⫿
-                  </button>
+                  <>
+                    <button type="button" className="tab-bar-button hide-sm" title="오른쪽으로 나누기 (Ctrl+\)" aria-label="오른쪽으로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id, side: 'right' })}>
+                      ▥
+                    </button>
+                    <button type="button" className="tab-bar-button hide-sm" title="아래로 나누기 (Ctrl+Shift+\)" aria-label="아래로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id, side: 'down' })}>
+                      ▤
+                    </button>
+                  </>
                 )}
               </div>
 
@@ -259,13 +274,29 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
                   </div>
                 )}
                 {dropHint?.groupId === g.id && dropHint.zone !== 'tabs' && (
-                  <div className={`drop-zone ${dropHint.zone}`}>{dropHint.zone === 'right' ? '오른쪽에 나란히' : '여기에 열기'}</div>
+                  <div className={`drop-zone ${dropHint.zone}`}>{SIDES[dropHint.zone] ?? '여기에 열기'}</div>
                 )}
               </div>
             </section>
           </div>
         );
       })}
+
+      {splitters.map((sp) => (
+        <div
+          key={sp.key}
+          className={`group-splitter ${sp.dir}`}
+          role="separator"
+          aria-orientation={sp.dir === 'row' ? 'vertical' : 'horizontal'}
+          aria-label={sp.dir === 'row' ? '칸 너비 조절' : '칸 높이 조절'}
+          style={
+            sp.dir === 'row'
+              ? { left: pct(sp.at), top: pct(sp.node.y), height: pct(sp.node.h) }
+              : { top: pct(sp.at), left: pct(sp.node.x), width: pct(sp.node.w) }
+          }
+          onPointerDown={(e) => startResize(e, sp)}
+        />
+      ))}
 
       {menu && (
         <ContextMenu anchor={menu.anchor} onClose={() => setMenu(null)} label="탭 메뉴">
@@ -292,21 +323,26 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
           >
             ✕ 다른 탭 모두 닫기
           </button>
-          {canSplit && (
-            <button
-              type="button"
-              role="menuitem"
-              className="hide-sm"
-              onClick={() => {
-                const g = layout.groups.find((x) => x.id === menu.groupId);
-                const tab = g?.tabs.find((t) => t.key === menu.key);
-                setMenu(null);
-                if (tab) dispatch({ type: 'openToSide', tab, fromGroupId: menu.groupId });
-              }}
-            >
-              ⫿ 오른쪽에 나란히 열기
-            </button>
-          )}
+          {canSplit &&
+            [
+              ['right', '▥ 오른쪽에 나란히 열기'],
+              ['down', '▤ 아래에 열기'],
+            ].map(([side, label]) => (
+              <button
+                key={side}
+                type="button"
+                role="menuitem"
+                className="hide-sm"
+                onClick={() => {
+                  const g = layout.groups.find((x) => x.id === menu.groupId);
+                  const tab = g?.tabs.find((t) => t.key === menu.key);
+                  setMenu(null);
+                  if (tab) dispatch({ type: 'openToSide', tab, fromGroupId: menu.groupId, side });
+                }}
+              >
+                {label}
+              </button>
+            ))}
         </ContextMenu>
       )}
 
