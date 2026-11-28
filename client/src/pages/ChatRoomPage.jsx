@@ -32,6 +32,7 @@ function ChatRoom({ id }) {
   const [showMembers, setShowMembers] = useState(false);
   const [messages, setMessages] = useState([]);
   const [hasMore, setHasMore] = useState(false);
+  const [newAfterId, setNewAfterId] = useState(null); // 이 id 뒤로 온 메시지는 슬라이드 효과
   const [loadingOlder, setLoadingOlder] = useState(false);
   const connected = useSocketConnected();
   const [error, setError] = useState('');
@@ -53,6 +54,7 @@ function ChatRoom({ id }) {
         setRoom(detail.room);
         setMembers(detail.members);
         setMessages((prev) => mergeMessages(history.messages, prev));
+        setNewAfterId(history.messages.at(-1)?.id ?? 0);
         setHasMore(history.hasMore);
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -235,6 +237,7 @@ function ChatRoom({ id }) {
 
       <MessageList
         messages={messages}
+        newAfterId={newAfterId}
         hasMore={hasMore}
         loadingOlder={loadingOlder}
         onLoadOlder={loadOlder}

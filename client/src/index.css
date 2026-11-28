@@ -80,13 +80,17 @@ a { color: var(--primary); text-decoration: none; }
 .msg-edited { font-size: 11px; opacity: 0.75; }
 .msg-deleted, .msg-mine .msg-deleted { background: transparent; border: 1px dashed var(--border); color: var(--muted); font-style: italic; }
 
-/* 메시지 메뉴 (말풍선을 누르면) */
-.msg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; padding: 4px 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.08); font-size: 13px; }
-.msg-actions button { background: none; border: none; padding: 4px 8px; border-radius: 6px; font: inherit; color: var(--text); cursor: pointer; }
-.msg-actions button:hover { background: #eef1f5; }
-.msg-actions .emoji { font-size: 18px; padding: 2px 4px; }
-.msg-actions .danger { color: #d14343; }
-.msg-actions .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
+/* 메시지 메뉴: PC 우클릭 자리 / 휴대폰 말풍선 아래에 떠 있는 창 */
+.msg-menu { position: fixed; z-index: 40; min-width: 200px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.16); display: flex; flex-direction: column; animation: menu-down 0.14s ease-out; transform-origin: top left; }
+.msg-menu-up { animation-name: menu-up; transform-origin: bottom left; }
+.msg-menu > button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
+.msg-menu > button:hover, .msg-menu > button:focus-visible { background: #eef1f5; outline: none; }
+.msg-menu > button.danger { color: #d14343; }
+.msg-menu-emojis { display: flex; justify-content: space-between; gap: 2px; padding: 2px 2px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.msg-menu-emojis button { width: 32px; height: 32px; border: none; border-radius: 50%; background: none; font-size: 19px; line-height: 1; cursor: pointer; transition: transform 0.1s; }
+.msg-menu-emojis button:hover { background: #eef1f5; transform: scale(1.18); }
+.msg-menu-emojis button.on { background: #e8f0fe; }
+.msg-menu-confirm { margin: 4px 10px 6px; font-size: 14px; font-weight: 600; }
 
 /* 반응 칩 */
 .msg-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -123,10 +127,9 @@ a { color: var(--primary); text-decoration: none; }
 .room-meta .badge-unread { margin-left: 0; }
 
 .toasts { position: fixed; right: 16px; bottom: 16px; z-index: 10; display: flex; flex-direction: column; gap: 8px; max-width: min(340px, calc(100vw - 32px)); }
-.toast { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 14px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); font: inherit; cursor: pointer; animation: toast-in 0.2s ease-out; }
+.toast { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 14px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; background: var(--surface); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); font: inherit; cursor: pointer; }
 .toast strong { font-size: 13px; }
 .toast span { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ===== 6단계: 반응형 채팅 틀 ===== */
 .chat-layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100dvh - 48px); }
@@ -168,3 +171,35 @@ a { color: var(--primary); text-decoration: none; }
 .profile-photo-buttons small { flex-basis: 100%; font-size: 12px; }
 .auth-form input:disabled { background: #f3f4f6; color: var(--muted); }
 .form-ok { color: #2f8a4c; margin: 12px 0 0; font-size: 14px; }
+
+/* ── 움직임 (슬라이드 효과) ── */
+@keyframes slide-up-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes slide-down-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes slide-from-right { from { opacity: 0.4; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+@keyframes slide-from-left { from { opacity: 0.4; transform: translateX(-40px); } to { opacity: 1; transform: none; } }
+@keyframes menu-down { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes menu-up { from { opacity: 0; transform: translateY(6px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.msg-enter .msg { animation: slide-up-in 0.22s ease-out; }            /* 새 메시지: 아래에서 올라옴 */
+.msg-enter .msg-system { animation: fade-in 0.3s ease-out; }
+.reaction { animation: pop-in 0.2s ease-out; }                         /* 반응 칩: 톡 튀어나옴 */
+.members { animation: slide-down-in 0.18s ease-out; }                  /* 참여자 목록: 위에서 내려옴 */
+.conn-warning { animation: slide-down-in 0.18s ease-out; }
+.msg-edit { animation: fade-in 0.15s ease-out; }
+.dialog-backdrop { animation: fade-in 0.15s ease-out; }
+.dialog { animation: slide-up-in 0.2s ease-out; }                      /* 읽은 사람 창: 아래에서 올라옴 */
+.toast { animation: slide-from-right 0.22s ease-out; }                 /* 알림: 오른쪽에서 들어옴 */
+.form-ok, .form-error { animation: fade-in 0.2s ease-out; }
+
+/* 휴대폰: 방을 열면 대화가 오른쪽에서, 목록으로 돌아오면 목록이 왼쪽에서 밀려 들어옴 */
+@media (max-width: 767px) {
+  .chat-layout.room-open .chat-pane { animation: slide-from-right 0.24s ease-out; }
+  .chat-layout:not(.room-open) .chat-sidebar { animation: slide-from-left 0.24s ease-out; }
+}
+
+/* 움직임 줄이기를 켠 사용자(시스템 설정)에게는 효과 없이 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

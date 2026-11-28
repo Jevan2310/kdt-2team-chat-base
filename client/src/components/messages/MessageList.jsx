@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import MessageItem from './MessageItem.jsx';
+import MessageMenu from './MessageMenu.jsx';
 
 const dateOf = (createdAt) => createdAt?.slice(0, 10) ?? '';
 const minutesOf = (createdAt) => (createdAt ? new Date(createdAt.replace(' ', 'T')).getTime() / 60000 : 0);
@@ -19,35 +20,49 @@ function isContinued(m, prev) {
 // - 새 메시지: 맨 아래를 보고 있었거나 내가 보낸 거면 맨 아래로
 // - 이전 대화 불러오기: 보던 위치 그대로 유지
 // - 수정·반응처럼 메시지가 바뀌기만 했으면: 스크롤을 건드리지 않음 (맨 아래를 보고 있었으면 맨 아래 유지)
-export default function MessageList({ messages, hasMore, loadingOlder, onLoadOlder, unreadCountOf, ctx }) {
+// newAfterId: 방에 들어올 때 받은 마지막 메시지 id. 이보다 뒤에 온 것만 "새 메시지" 효과 (처음 화면·이전 대화는 효과 없음)
+export default function MessageList({ messages, newAfterId, hasMore, loadingOlder, onLoadOlder, unreadCountOf, ctx }) {
   const { myId } = ctx;
   const boxRef = useRef(null);
   const prev = useRef({ firstId: null, lastId: null, scrollHeight: 0, nearBottom: true });
-  const [selectedId, setSelectedId] = useState(null); // 메뉴가 열린 메시지
+  const [menu, setMenu] = useState(null); // 열린 메시지 메뉴 { messageId, anchor }
   const [editingId, setEditingId] = useState(null); // 수정 중인 메시지
-  const itemCtx = { ...ctx, onSelect: setSelectedId, onStartEdit: setEditingId };
+  const closeMenu = () => setMenu(null);
+  const itemCtx = {
+    ...ctx,
+    onOpenMenu: (message, anchor) => setMenu({ messageId: message.id, anchor }),
+    onCloseMenu: closeMenu,
+    onStartEdit: setEditingId,
+  };
+  const menuMessage = menu && messages.find((m) => m.id === menu.messageId && !m.deletedAt);
 
-  // 메뉴가 열려 있을 때: 메뉴·그 말풍선 말고 다른 곳을 누르거나 Esc 를 누르면 닫는다
-  // (그 말풍선은 원래대로 누르면 닫힘. 다른 말풍선을 누르면 닫히고 그 말풍선 메뉴가 열림)
+  // 메뉴가 열려 있을 때 닫는 경우: 메뉴 밖을 누름, Esc, 목록 스크롤, 창 크기 바뀜
+  // (손가락으로 같은 말풍선을 다시 누르면 그 말풍선이 닫기를 처리)
   useEffect(() => {
-    if (selectedId === null) return;
+    if (!menu) return;
     const onPointerDown = (e) => {
-      if (e.target.closest?.('.msg-actions, .msg-selected')) return;
-      setSelectedId(null);
+      if (e.target.closest?.('.msg-menu')) return;
+      if (e.pointerType !== 'mouse' && e.target.closest?.('.msg-selected')) return;
+      setMenu(null);
     };
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return;
-      setSelectedId(null);
+      setMenu(null);
       // 말풍선에 남은 포커스 테두리가 "아직 선택됨"처럼 보이지 않게
       if (document.activeElement?.classList.contains('msg-bubble')) document.activeElement.blur();
     };
+    const box = boxRef.current;
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
+    box?.addEventListener('scroll', closeMenu, { passive: true });
+    window.addEventListener('resize', closeMenu);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
+      box?.removeEventListener('scroll', closeMenu);
+      window.removeEventListener('resize', closeMenu);
     };
-  }, [selectedId]);
+  }, [menu]);
 
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -83,7 +98,7 @@ export default function MessageList({ messages, hasMore, loadingOlder, onLoadOld
       )}
       {messages.length === 0 && <p className="muted center">첫 메시지를 보내 보세요.</p>}
       {messages.map((m, i) => (
-        <div key={m.id}>
+        <div key={m.id} className={newAfterId !== null && m.id > newAfterId ? 'msg-enter' : undefined}>
           {dateOf(m.createdAt) !== dateOf(messages[i - 1]?.createdAt) && (
             <div className="msg-date">{dateOf(m.createdAt)}</div>
           )}
@@ -92,12 +107,22 @@ export default function MessageList({ messages, hasMore, loadingOlder, onLoadOld
             continued={isContinued(m, messages[i - 1])}
             mine={m.type === 'text' && m.user?.id === myId}
             unread={m.deletedAt ? 0 : (unreadCountOf?.(m) ?? 0)}
-            selected={selectedId === m.id}
+            selected={menu?.messageId === m.id}
             editing={editingId === m.id}
             ctx={itemCtx}
           />
         </div>
       ))}
+      {menuMessage && (
+        <MessageMenu
+          key={menu.messageId}
+          message={menuMessage}
+          mine={menuMessage.user?.id === myId}
+          anchor={menu.anchor}
+          onClose={closeMenu}
+          ctx={itemCtx}
+        />
+      )}
     </div>
   );
 }

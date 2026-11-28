@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { REACTION_EMOJIS } from './reactions.js';
+import { useRef, useState } from 'react';
 import Avatar from '../users/Avatar.jsx';
 
 // 메시지 종류(type)마다 그리는 컴포넌트를 고른다.
@@ -64,50 +63,30 @@ function Reactions({ reactions, myId, nameOf, onReact }) {
   );
 }
 
-// 말풍선을 누르면 나오는 메뉴: 반응 · 읽음 확인 · (내 글) 수정 · 삭제
-function Actions({ mine, onReact, onShowReaders, onEdit, onDelete }) {
-  const [confirming, setConfirming] = useState(false);
-  const ref = useRef(null);
-  // 맨 아래 메시지면 메뉴가 가려지지 않게. 중괄호 필수: 최신 Chrome의 scrollIntoView 는 Promise 를 돌려주는데,
-  // 화살표 함수가 그걸 그대로 반환하면 React 가 정리 함수로 착각해 화면이 멈춘다
-  useEffect(() => {
-    ref.current?.scrollIntoView({ block: 'nearest' });
-  }, []);
-  if (confirming) {
-    return (
-      <div className="msg-actions" ref={ref}>
-        <span>삭제할까요?</span>
-        <button type="button" className="danger" onClick={onDelete}>삭제</button>
-        <button type="button" onClick={() => setConfirming(false)}>취소</button>
-      </div>
-    );
-  }
-  return (
-    <div className="msg-actions" ref={ref}>
-      {REACTION_EMOJIS.map((emoji) => (
-        <button type="button" key={emoji} className="emoji" onClick={() => onReact(emoji)} aria-label={`${emoji} 반응`}>
-          {emoji}
-        </button>
-      ))}
-      <span className="sep" />
-      <button type="button" onClick={onShowReaders}>읽음 확인</button>
-      {mine && <button type="button" onClick={onEdit}>수정</button>}
-      {mine && <button type="button" className="danger" onClick={() => setConfirming(true)}>삭제</button>}
-    </div>
-  );
-}
-
 function TextMessage({ message, mine, continued, unread, selected, editing, ctx }) {
   const deleted = Boolean(message.deletedAt);
-  const react = (emoji) => {
-    ctx.onReact(message, emoji);
-    ctx.onSelect(null);
+  const react = (emoji) => ctx.onReact(message, emoji);
+  const pointerType = useRef('mouse'); // 마우스로 눌렀는지, 손가락(터치)으로 눌렀는지
+
+  // 말풍선 아래에 메뉴 열기 (터치·키보드)
+  const openBelow = (el) => {
+    const r = el.getBoundingClientRect();
+    ctx.onOpenMenu(message, { x: mine ? r.right : r.left, y: r.bottom + 4, aboveY: r.top - 4, alignRight: mine });
   };
 
-  // 글자를 드래그해서 복사할 때는 메뉴를 열지 않는다
-  const toggle = () => {
-    if (deleted || window.getSelection()?.toString()) return;
-    ctx.onSelect(selected ? null : message.id);
+  // PC: 우클릭한 자리에 메뉴 (키보드 메뉴 키는 좌표가 0이라 말풍선 아래에)
+  const onContextMenu = (e) => {
+    if (deleted) return; // 지운 글은 브라우저 기본 메뉴
+    e.preventDefault();
+    if (e.clientX === 0 && e.clientY === 0) return openBelow(e.currentTarget);
+    ctx.onOpenMenu(message, { x: e.clientX, y: e.clientY, aboveY: e.clientY, alignRight: false });
+  };
+
+  // 휴대폰: 탭하면 메뉴 열기/닫기. 마우스 왼쪽 클릭은 글자 선택용으로 비워 둔다
+  const onClick = (e) => {
+    if (deleted || pointerType.current === 'mouse') return;
+    if (selected) return ctx.onCloseMenu();
+    openBelow(e.currentTarget);
   };
 
   return (
@@ -135,9 +114,19 @@ function TextMessage({ message, mine, continued, unread, selected, editing, ctx 
               className={`msg-bubble ${selected ? 'msg-selected' : ''}`}
               role="button"
               tabIndex={0}
+              aria-haspopup="menu"
               aria-expanded={selected}
-              onClick={toggle}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle())}
+              title="우클릭(휴대폰은 탭)하면 반응·읽음 확인·수정·삭제"
+              onPointerDown={(e) => (pointerType.current = e.pointerType)}
+              onClick={onClick}
+              onContextMenu={onContextMenu}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (selected) ctx.onCloseMenu();
+                  else openBelow(e.currentTarget);
+                }
+              }}
             >
               {message.content}
               {message.editedAt && <span className="msg-edited"> (수정됨)</span>}
@@ -158,24 +147,6 @@ function TextMessage({ message, mine, continued, unread, selected, editing, ctx 
           </span>
         </div>
         {!deleted && <Reactions reactions={message.reactions} myId={ctx.myId} nameOf={ctx.nameOf} onReact={react} />}
-        {selected && !editing && (
-          <Actions
-            mine={mine}
-            onReact={react}
-            onShowReaders={() => {
-              ctx.onShowReaders(message);
-              ctx.onSelect(null);
-            }}
-            onEdit={() => {
-              ctx.onStartEdit(message.id);
-              ctx.onSelect(null);
-            }}
-            onDelete={() => {
-              ctx.onDelete(message);
-              ctx.onSelect(null);
-            }}
-          />
-        )}
       </div>
     </div>
   );
@@ -190,7 +161,8 @@ const RENDERERS = {
   system: SystemMessage,
 };
 
-// continued: 같은 사람이 이어 보낸 글이면 프로필·이름 생략 / ctx: 메시지 메뉴에 필요한 것들 (myId, nameOf, onSelect, onStartEdit, onEdit, onDelete, onReact, onShowReaders)
+// continued: 같은 사람이 이어 보낸 글이면 프로필·이름 생략 / selected: 메뉴가 열린 글
+// ctx: myId, nameOf, onOpenMenu, onCloseMenu, onStartEdit, onEdit, onDelete, onReact, onShowReaders
 export default function MessageItem(props) {
   const Renderer = RENDERERS[props.message.type] ?? TextMessage; // 모르는 종류는 일반 글처럼
   return <Renderer {...props} />;
