@@ -12,7 +12,8 @@ export async function listRooms(userId) {
                WHERE msg.room_id = r.id
                  AND msg.id > COALESCE(me.last_read_message_id, 0)
                  AND msg.type <> 'system'
-                 AND msg.user_id <> ?
+                 AND msg.deleted_at IS NULL
+                 AND (msg.user_id IS NULL OR msg.user_id <> ?)
             ) END AS unreadCount
        FROM rooms r
        LEFT JOIN room_members me ON me.room_id = r.id AND me.user_id = ?
@@ -75,6 +76,16 @@ export async function joinRoom(roomId, userId) {
     [roomId, userId, roomId],
   );
   return result.affectedRows === 1;
+}
+
+// 한 사람의 참여 정보 (방금 들어온 사람의 실제 책갈피를 다른 사람들에게 알려 줄 때)
+export async function findMember(roomId, userId) {
+  const [rows] = await pool.query(
+    `SELECT last_read_message_id AS lastReadMessageId, joined_at AS joinedAt
+       FROM room_members WHERE room_id = ? AND user_id = ?`,
+    [roomId, userId],
+  );
+  return rows[0] ?? null;
 }
 
 // 나가기. 실제로 나갔으면 true

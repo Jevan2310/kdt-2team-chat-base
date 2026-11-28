@@ -77,7 +77,7 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
         change === 'join'
           ? prev.some((m) => m.id === who.id)
             ? prev
-            : [...prev, { ...who, lastReadMessageId: Infinity }] // 새로 온 사람은 이전 메시지를 "안 읽음"으로 세지 않음
+            : [...prev, { ...who, lastReadMessageId: who.lastReadMessageId ?? 0 }] // 서버가 알려 준 실제 책갈피 (들어온 순간의 마지막 메시지)
           : prev.filter((m) => m.id !== who.id),
       );
     };
@@ -161,10 +161,10 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
   }, [members]);
 
   // 읽은 사람 창 내용: 보낸 사람을 빼고, 책갈피가 그 메시지 이상인 사람.
-  // 메시지가 온 뒤에 들어온 사람은 그 메시지를 본 게 아니므로 뺀다 (방금 들어와 joinedAt 이 없는 사람 = lastReadMessageId Infinity)
+  // 메시지가 온 뒤에 들어온 사람은 그 메시지를 본 게 아니므로 뺀다 (joinedAt 이 메시지보다 늦은 사람)
   const readers = useMemo(() => {
     if (!readersOf) return null;
-    const joinedBefore = (m) => m.lastReadMessageId !== Infinity && !(m.joinedAt && m.joinedAt > readersOf.createdAt);
+    const joinedBefore = (m) => !(m.joinedAt && m.joinedAt > readersOf.createdAt);
     return members.filter(
       (m) => m.id !== readersOf.user?.id && (m.lastReadMessageId ?? 0) >= readersOf.id && joinedBefore(m),
     );

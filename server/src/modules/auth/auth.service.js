@@ -6,6 +6,15 @@ import { config } from '../../config.js';
 // 화면에 내보내도 되는 칸만 고른다 (password_hash 는 절대 내보내지 않음)
 const PUBLIC_COLUMNS = 'id, username, nickname, department, role, avatar_url AS avatarUrl, created_at AS createdAt';
 
+// 다른 사람에게 보여도 되는 칸만 (username 은 로그인 아이디라 남에게 보내지 않는다)
+export const publicProfile = (u) => ({
+  id: u.id,
+  nickname: u.nickname,
+  department: u.department,
+  role: u.role,
+  avatarUrl: u.avatarUrl ?? null,
+});
+
 export async function findUserById(id) {
   const [rows] = await pool.query(`SELECT ${PUBLIC_COLUMNS} FROM users WHERE id = ?`, [id]);
   return rows[0] ?? null;

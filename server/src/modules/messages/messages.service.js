@@ -24,7 +24,7 @@ function toMessage(row, reactions = []) {
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     deletedAt: row.deletedAt,
-    reactions, // [{ emoji: '👍', userIds: [1, 3] }] — 먼저 누른 순서
+    reactions: deleted ? [] : reactions, // [{ emoji: '👍', userIds: [1, 3] }] — 먼저 누른 순서
     user: row.userId
       ? { id: row.userId, nickname: row.nickname, department: row.department, role: row.role, avatarUrl: row.avatarUrl }
       : null,
@@ -101,7 +101,7 @@ export async function listMessagesAfter(roomId, { after, limit = 100 }) {
 
 // 수정: 내용 바꾸고 수정 시각 기록
 export async function editMessage(id, content) {
-  await pool.query('UPDATE messages SET content = ?, edited_at = NOW() WHERE id = ?', [content, id]);
+  await pool.query('UPDATE messages SET content = ?, edited_at = NOW() WHERE id = ? AND deleted_at IS NULL', [content, id]);
   return findMessage(id);
 }
 
@@ -129,11 +129,11 @@ export async function toggleReaction(messageId, userId, emoji) {
     [messageId, userId, emoji],
   );
   if (removed.affectedRows === 0) {
-    await pool.query('INSERT IGNORE INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?)', [
-      messageId,
-      userId,
-      emoji,
-    ]);
+    await pool.query(
+      `INSERT IGNORE INTO message_reactions (message_id, user_id, emoji)
+       SELECT id, ?, ? FROM messages WHERE id = ? AND deleted_at IS NULL`,
+      [userId, emoji, messageId],
+    );
   }
   return findMessage(messageId);
 }

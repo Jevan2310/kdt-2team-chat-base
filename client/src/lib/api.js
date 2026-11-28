@@ -11,6 +11,7 @@ export async function api(path, { method = 'GET', body, token } = {}) {
     body: isFile ? body : body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message ?? `요청 실패 (${res.status})`);
+  // status 를 붙여 둔다 → 부른 쪽이 "로그인 만료(401)"와 "서버·네트워크 문제"를 구분할 수 있게
+  if (!res.ok) throw Object.assign(new Error(data.message ?? `요청 실패 (${res.status})`), { status: res.status });
   return data;
 }

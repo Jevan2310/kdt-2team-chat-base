@@ -9,7 +9,7 @@
 | GET | `/api/health` | — | — | `{ ok, db, rooms, time }` | — |
 | POST | `/api/auth/signup` | — | `{ username, password, nickname, department? }` | `201 { token, user }` | 400 입력 규칙, 409 아이디 중복 |
 | POST | `/api/auth/login` | — | `{ username, password }` | `{ token, user }` | 401 아이디·비밀번호 틀림 |
-| GET | `/api/auth/me` | ✅ | — | `{ user }` | 401 토큰 없음·만료 |
+| GET | `/api/auth/me` | ✅ | — | `{ user }` | 401 토큰 없음·만료 (화면은 401 일 때만 로그아웃, 500·네트워크 오류면 3초 뒤 다시 시도) |
 | PATCH | `/api/users/me` | ✅ | `{ nickname, department? }` | `{ user }` + 소켓 `user:updated` | 400 입력 규칙 |
 | PUT | `/api/users/me/avatar` | ✅ | 본문 = 이미지 파일 그대로, `Content-Type: image/jpeg \| image/png \| image/webp` (2MB 이하) | `{ user }` + 소켓 `user:updated` | 400 사진이 아님, 413 너무 큼 |
 | DELETE | `/api/users/me/avatar` | ✅ | — | `{ user }` (`avatarUrl: null`) + 소켓 `user:updated` | — |
@@ -90,7 +90,7 @@
 
 ## 읽음·안 읽은 개수 규칙
 - 방 참여자마다 **책갈피** `room_members.last_read_message_id` = 어디까지 읽었는지 (메시지 id)
-- **안 읽은 개수** (방 목록 배지) = 내 책갈피보다 뒤에 온, 남이 보낸 일반 메시지 수 (`system` 제외)
+- **안 읽은 개수** (방 목록 배지) = 내 책갈피보다 뒤에 온, 남이 보낸 일반 메시지 수 (`system`·지운 글 제외, 보낸 사람이 탈퇴한 글은 포함)
 - **메시지 옆 숫자** (카톡식) = 보낸 사람을 뺀 참여자 중 책갈피가 그 메시지보다 앞인 사람 수 → 화면에서 `members`로 계산
 - 처음 참여하면 책갈피 = 그 방의 마지막 메시지 → 들어오기 전 메시지는 "안 읽음"으로 세지 않음
 - 메시지를 보내면 보낸 사람의 책갈피도 그 메시지로 이동

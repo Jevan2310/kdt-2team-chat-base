@@ -1,6 +1,7 @@
 import express, { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
+import { publicProfile } from '../auth/auth.service.js';
 import { checkProfile, isUnknownDepartment, UNKNOWN_DEPARTMENT } from './users.rules.js';
 import { AVATAR_MAX_BYTES, detectImageType, updateProfile, saveAvatar, clearAvatar } from './users.service.js';
 
@@ -9,8 +10,11 @@ router.use(requireAuth);
 
 // 프로필이 바뀌면 접속한 모두에게 알린다 → 다른 사람 화면의 이름·사진도 바로 바뀜
 function announce(user) {
-  const { id, nickname, department, role, avatarUrl } = user;
-  getIo()?.emit('user:updated', { id, nickname, department, role, avatarUrl });
+  try {
+    getIo().emit('user:updated', publicProfile(user));
+  } catch {
+    // 소켓 준비 전이면 알림만 건너뜀
+  }
 }
 
 // PATCH /api/users/me  { nickname, department? } → { user }

@@ -28,24 +28,53 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(Boolean(readToken())); // 저장된 토큰이 있으면 확인하는 동안 로딩
 
+  const [retry, setRetry] = useState(0); // 서버·네트워크 문제로 내 정보를 못 받았을 때 다시 시도한 횟수
+
   // 새로고침 후: 저장된 토큰으로 내 정보 다시 받기
+  // 토큰이 틀렸거나 만료(401)일 때만 로그아웃. 서버가 잠깐 꺼졌거나 네트워크 문제면 로그인을 유지한 채 3초 뒤 다시 시도
   useEffect(() => {
     if (!token || user) return;
+    let timer;
     api('/auth/me', { token })
-      .then((data) => setUser(data.user))
-      .catch(() => {
-        writeToken(null);
-        setToken(null);
+      .then((data) => {
+        setUser(data.user);
+        setLoading(false);
       })
-      .finally(() => setLoading(false));
-  }, [token, user]);
+      .catch((err) => {
+        if (err.status === 401) {
+          writeToken(null);
+          setToken(null);
+          setLoading(false);
+        } else {
+          timer = setTimeout(() => setRetry((n) => n + 1), 3000);
+        }
+      });
+    return () => clearTimeout(timer);
+  }, [token, user, retry]);
 
   // 로그인돼 있으면 소켓 연결, 로그아웃하면 끊기
   useEffect(() => {
     if (!token) return;
     socket.auth = { token };
     socket.connect();
-    return () => socket.disconnect();
+    // 서버가 연결을 거절했을 때: 토큰 문제면 로그아웃, 서버 문제(server_busy)면 3초 뒤 다시 연결
+    // (네트워크가 끊긴 경우는 socket.io 가 알아서 다시 연결한다)
+    let timer;
+    const onConnectError = (err) => {
+      if (err.message === 'unauthorized') {
+        writeToken(null);
+        setToken(null);
+        setUser(null);
+      } else if (!socket.active) {
+        timer = setTimeout(() => socket.connect(), 3000);
+      }
+    };
+    socket.on('connect_error', onConnectError);
+    return () => {
+      clearTimeout(timer);
+      socket.off('connect_error', onConnectError);
+      socket.disconnect();
+    };
   }, [token]);
 
   const saveLogin = useCallback((data) => {

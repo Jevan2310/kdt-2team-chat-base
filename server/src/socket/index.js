@@ -12,14 +12,22 @@ export function attachSocket(httpServer) {
   setIo(io);
 
   // 연결 전에 로그인 토큰 확인 → 통과하면 socket.data.user 에 사용자 저장
+  // 'unauthorized' = 토큰 문제(화면이 로그아웃), 'server_busy' = DB 등 서버 문제(화면이 잠시 뒤 다시 연결)
   io.use(async (socket, next) => {
+    let userId;
     try {
-      const user = await findUserById(verifyToken(socket.handshake.auth?.token));
+      userId = verifyToken(socket.handshake.auth?.token);
+    } catch {
+      return next(new Error('unauthorized'));
+    }
+    try {
+      const user = await findUserById(userId);
       if (!user) return next(new Error('unauthorized'));
       socket.data.user = user;
       next();
-    } catch {
-      next(new Error('unauthorized'));
+    } catch (err) {
+      console.error(err);
+      next(new Error('server_busy'));
     }
   });
 

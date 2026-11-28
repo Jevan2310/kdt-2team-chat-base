@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
-import { listRooms, findRoom, listMembers, createRoom, joinRoom, leaveRoom, isMember } from './rooms.service.js';
+import { listRooms, findRoom, listMembers, findMember, createRoom, joinRoom, leaveRoom, isMember } from './rooms.service.js';
+import { publicProfile } from '../auth/auth.service.js';
 import { listMessages, listMessagesAfter, saveMessage } from '../messages/messages.service.js';
 import { toId, toIntInRange } from '../../lib/validate.js';
 
@@ -43,7 +44,9 @@ router.post('/:roomId/join', loadRoom, async (req, res) => {
   const isNew = await joinRoom(req.room.id, req.user.id);
   if (isNew) {
     const io = getIo();
-    io.emit('room:members', { roomId: req.room.id, change: 'join', user: req.user });
+    // 4. 실제 책갈피(들어온 순간의 마지막 메시지)도 같이 → 다른 사람 화면의 노란 숫자가 정확해짐
+    const member = await findMember(req.room.id, req.user.id);
+    io.emit('room:members', { roomId: req.room.id, change: 'join', user: { ...publicProfile(req.user), ...member } });
     const notice = await saveMessage({ roomId: req.room.id, type: 'system', content: `${req.user.nickname}님이 들어왔어요.` });
     io.to(`room:${req.room.id}`).emit('message:new', notice);
   }
@@ -57,7 +60,7 @@ router.post('/:roomId/leave', loadRoom, async (req, res) => {
     const io = getIo();
     // 이 사람의 모든 소켓(탭)을 방 소켓 그룹에서 빼서 더 이상 메시지를 받지 않게
     io.in(`user:${req.user.id}`).socketsLeave(`room:${req.room.id}`);
-    io.emit('room:members', { roomId: req.room.id, change: 'leave', user: req.user });
+    io.emit('room:members', { roomId: req.room.id, change: 'leave', user: publicProfile(req.user) });
     const notice = await saveMessage({ roomId: req.room.id, type: 'system', content: `${req.user.nickname}님이 나갔어요.` });
     io.to(`room:${req.room.id}`).emit('message:new', notice);
   }
