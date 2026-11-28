@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { REACTION_EMOJIS } from './reactions.js';
+import Avatar from '../users/Avatar.jsx';
 
 // 메시지 종류(type)마다 그리는 컴포넌트를 고른다.
 // 새 종류(예: 챗봇 bot, 휴가 vacation)를 추가하려면 컴포넌트를 만들고 아래 표에 한 줄 추가한다.
@@ -96,7 +97,7 @@ function Actions({ mine, onReact, onShowReaders, onEdit, onDelete }) {
   );
 }
 
-function TextMessage({ message, mine, unread, selected, editing, ctx }) {
+function TextMessage({ message, mine, continued, unread, selected, editing, ctx }) {
   const deleted = Boolean(message.deletedAt);
   const react = (emoji) => {
     ctx.onReact(message, emoji);
@@ -110,68 +111,72 @@ function TextMessage({ message, mine, unread, selected, editing, ctx }) {
   };
 
   return (
-    <div className={`msg ${mine ? 'msg-mine' : ''}`}>
-      {!mine && (
-        <div className="msg-author">
-          {message.user?.nickname ?? '알 수 없음'}
-          {message.user?.department && <small> · {message.user.department}</small>}
-        </div>
-      )}
-      <div className="msg-row">
-        {editing ? (
-          <EditBox
-            initial={message.content}
-            onSave={(text) => ctx.onEdit(message, text)}
-            onCancel={() => ctx.onStartEdit(null)}
-          />
-        ) : deleted ? (
-          <div className="msg-bubble msg-deleted">삭제된 메시지예요.</div>
-        ) : (
-          <div
-            className={`msg-bubble ${selected ? 'msg-selected' : ''}`}
-            role="button"
-            tabIndex={0}
-            aria-expanded={selected}
-            onClick={toggle}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle())}
-          >
-            {message.content}
-            {message.editedAt && <span className="msg-edited"> (수정됨)</span>}
+    <div className={`msg ${mine ? 'msg-mine' : ''} ${continued ? 'msg-continued' : ''}`}>
+      {/* 남의 글: 왼쪽에 프로필 (이어 보낸 글은 자리만 비워 둠) */}
+      {!mine && <div className="msg-avatar">{!continued && <Avatar user={message.user} />}</div>}
+      <div className="msg-body">
+        {!mine && !continued && (
+          <div className="msg-author">
+            {message.user?.nickname ?? '알 수 없음'}
+            {message.user?.department && <small> · {message.user.department}</small>}
           </div>
         )}
-        <span className="msg-side">
-          {unread > 0 && (
-            <button
-              type="button"
-              className="msg-unread"
-              title={`${unread}명이 아직 안 읽음 — 눌러서 누가 읽었는지 보기`}
-              onClick={() => ctx.onShowReaders(message)}
+        <div className="msg-row">
+          {editing ? (
+            <EditBox
+              initial={message.content}
+              onSave={(text) => ctx.onEdit(message, text)}
+              onCancel={() => ctx.onStartEdit(null)}
+            />
+          ) : deleted ? (
+            <div className="msg-bubble msg-deleted">삭제된 메시지예요.</div>
+          ) : (
+            <div
+              className={`msg-bubble ${selected ? 'msg-selected' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-expanded={selected}
+              onClick={toggle}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle())}
             >
-              {unread}
-            </button>
+              {message.content}
+              {message.editedAt && <span className="msg-edited"> (수정됨)</span>}
+            </div>
           )}
-          <span className="msg-time">{timeOf(message.createdAt)}</span>
-        </span>
+          <span className="msg-side">
+            {unread > 0 && (
+              <button
+                type="button"
+                className="msg-unread"
+                title={`${unread}명이 아직 안 읽음 — 눌러서 누가 읽었는지 보기`}
+                onClick={() => ctx.onShowReaders(message)}
+              >
+                {unread}
+              </button>
+            )}
+            <span className="msg-time">{timeOf(message.createdAt)}</span>
+          </span>
+        </div>
+        {!deleted && <Reactions reactions={message.reactions} myId={ctx.myId} nameOf={ctx.nameOf} onReact={react} />}
+        {selected && !editing && (
+          <Actions
+            mine={mine}
+            onReact={react}
+            onShowReaders={() => {
+              ctx.onShowReaders(message);
+              ctx.onSelect(null);
+            }}
+            onEdit={() => {
+              ctx.onStartEdit(message.id);
+              ctx.onSelect(null);
+            }}
+            onDelete={() => {
+              ctx.onDelete(message);
+              ctx.onSelect(null);
+            }}
+          />
+        )}
       </div>
-      {!deleted && <Reactions reactions={message.reactions} myId={ctx.myId} nameOf={ctx.nameOf} onReact={react} />}
-      {selected && !editing && (
-        <Actions
-          mine={mine}
-          onReact={react}
-          onShowReaders={() => {
-            ctx.onShowReaders(message);
-            ctx.onSelect(null);
-          }}
-          onEdit={() => {
-            ctx.onStartEdit(message.id);
-            ctx.onSelect(null);
-          }}
-          onDelete={() => {
-            ctx.onDelete(message);
-            ctx.onSelect(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -185,7 +190,7 @@ const RENDERERS = {
   system: SystemMessage,
 };
 
-// ctx: 메시지 메뉴에 필요한 것들 (myId, nameOf, onSelect, onStartEdit, onEdit, onDelete, onReact, onShowReaders)
+// continued: 같은 사람이 이어 보낸 글이면 프로필·이름 생략 / ctx: 메시지 메뉴에 필요한 것들 (myId, nameOf, onSelect, onStartEdit, onEdit, onDelete, onReact, onShowReaders)
 export default function MessageItem(props) {
   const Renderer = RENDERERS[props.message.type] ?? TextMessage; // 모르는 종류는 일반 글처럼
   return <Renderer {...props} />;

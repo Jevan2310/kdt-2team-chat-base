@@ -6,6 +6,7 @@ import { useAuth } from '../auth/useAuth.js';
 import MessageList from '../components/messages/MessageList.jsx';
 import MessageInput from '../components/messages/MessageInput.jsx';
 import ReadersDialog from '../components/messages/ReadersDialog.jsx';
+import PersonRow from '../components/users/PersonRow.jsx';
 
 // 같은 id는 한 번만, id 순서대로 (소켓으로 온 것과 API로 받은 것이 겹칠 수 있음)
 function mergeMessages(...lists) {
@@ -126,12 +127,14 @@ function ChatRoom({ id }) {
     return (message) => marks.filter((m) => m.id !== message.user?.id && m.last < message.id).length;
   }, [members]);
 
-  // 읽음 확인 창 내용: 보낸 사람을 뺀 참여자를 읽음/안 읽음으로 나눈다 (숫자 계산과 같은 기준)
+  // 읽은 사람 창 내용: 보낸 사람을 빼고, 책갈피가 그 메시지 이상인 사람.
+  // 메시지가 온 뒤에 들어온 사람은 그 메시지를 본 게 아니므로 뺀다 (방금 들어와 joinedAt 이 없는 사람 = lastReadMessageId Infinity)
   const readers = useMemo(() => {
     if (!readersOf) return null;
-    const others = members.filter((m) => m.id !== readersOf.user?.id);
-    const isRead = (m) => (m.lastReadMessageId ?? 0) >= readersOf.id;
-    return { read: others.filter(isRead), unread: others.filter((m) => !isRead(m)) };
+    const joinedBefore = (m) => m.lastReadMessageId !== Infinity && !(m.joinedAt && m.joinedAt > readersOf.createdAt);
+    return members.filter(
+      (m) => m.id !== readersOf.user?.id && (m.lastReadMessageId ?? 0) >= readersOf.id && joinedBefore(m),
+    );
   }, [readersOf, members]);
 
   // 메시지 메뉴(수정·삭제·반응)가 쓰는 것들. 결과는 서버가 message:updated 로도 보내지만, 내 화면은 ack 로 바로 반영
@@ -209,15 +212,10 @@ function ChatRoom({ id }) {
       </header>
 
       {showMembers && (
-        <section className="members">
-          <ul>
-            {members.map((m) => (
-              <li key={m.id}>
-                {m.nickname}
-                {m.department && <small> · {m.department}</small>}
-              </li>
-            ))}
-          </ul>
+        <section className="members person-list">
+          {members.map((m) => (
+            <PersonRow key={m.id} user={m} size={32} />
+          ))}
         </section>
       )}
 

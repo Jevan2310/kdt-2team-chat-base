@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
+import PersonRow from '../users/PersonRow.jsx';
 
-// "읽음 확인" 창: 이 메시지를 읽은 사람 / 아직 안 읽은 사람 (보낸 사람 제외)
+// "읽은 사람" 창: 이 메시지를 읽은 사람만 프로필과 함께 보여 준다 (보낸 사람 제외)
 export default function ReadersDialog({ readers, onClose }) {
   useEffect(() => {
     const onKey = (e) => {
@@ -10,35 +11,24 @@ export default function ReadersDialog({ readers, onClose }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const section = (title, people) => (
-    <section>
-      <h3>
-        {title} <span className="muted">{people.length}</span>
-      </h3>
-      {people.length === 0 ? (
-        <p className="muted">없음</p>
-      ) : (
-        <ul>
-          {people.map((p) => (
-            <li key={p.id}>
-              {p.nickname}
-              {p.department && <small> · {p.department}</small>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-
   return (
     <div className="dialog-backdrop" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label="읽음 확인" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog" role="dialog" aria-modal="true" aria-label="읽은 사람" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2>읽음 확인</h2>
+          <h2>
+            읽은 사람 <span className="muted">{readers.length}</span>
+          </h2>
           <button type="button" className="link-button" onClick={onClose} aria-label="닫기">✕</button>
         </header>
-        {section('안 읽음', readers.unread)}
-        {section('읽음', readers.read)}
+        {readers.length === 0 ? (
+          <p className="muted">아직 읽은 사람이 없어요.</p>
+        ) : (
+          <div className="person-list">
+            {readers.map((p) => (
+              <PersonRow key={p.id} user={p} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

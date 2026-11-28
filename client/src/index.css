@@ -44,8 +44,6 @@ a { color: var(--primary); text-decoration: none; }
 .room-meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; flex-shrink: 0; }
 .badge-joined { background: #e8f0fe; color: var(--primary); font-size: 12px; padding: 2px 8px; border-radius: 999px; }
 .link-button.danger { color: #d14343; }
-.members ul { margin: 0; padding-left: 20px; line-height: 1.8; }
-.members small { color: var(--muted); }
 
 .center { text-align: center; }
 
@@ -55,17 +53,20 @@ a { color: var(--primary); text-decoration: none; }
 .room-header h1 { flex: 1; margin: 0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-header > a { font-size: 20px; }
 .members { padding: 8px 16px; border-bottom: 1px solid var(--border); background: #fafbfc; max-height: 30vh; overflow-y: auto; }
-.members ul { margin: 0; padding-left: 20px; line-height: 1.8; }
 .conn-warning { margin: 0; padding: 6px 16px; background: #fff4e5; color: #8a5300; font-size: 13px; }
 
 .msg-list { flex: 1; overflow-y: auto; padding: 12px 16px; background: #f0f3f7; display: flex; flex-direction: column; gap: 2px; }
 .load-older { align-self: center; margin-bottom: 8px; padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 .msg-date { align-self: center; text-align: center; margin: 12px auto 6px; padding: 2px 12px; font-size: 12px; color: var(--muted); background: #e3e7ed; border-radius: 999px; width: fit-content; }
-.msg { display: flex; flex-direction: column; align-items: flex-start; margin: 4px 0; }
-.msg-mine { align-items: flex-end; }
+.msg { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 2px; }
+.msg-continued { margin-top: 2px; }
+.msg-mine { justify-content: flex-end; }
+.msg-avatar { width: 36px; flex-shrink: 0; }
+.msg-body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 80%; }
+.msg-mine .msg-body { align-items: flex-end; }
 .msg-author { font-size: 13px; font-weight: 600; margin: 0 0 3px 2px; }
 .msg-author small { color: var(--muted); font-weight: 400; }
-.msg-row { display: flex; align-items: flex-end; gap: 6px; max-width: 80%; }
+.msg-row { display: flex; align-items: flex-end; gap: 6px; max-width: 100%; }
 .msg-mine .msg-row { flex-direction: row-reverse; }
 .msg-bubble { padding: 8px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
 .msg-mine .msg-bubble { background: var(--primary); border-color: var(--primary); color: #fff; }
@@ -105,8 +106,6 @@ a { color: var(--primary); text-decoration: none; }
 .dialog header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .dialog h2 { font-size: 17px; margin: 0; }
 .dialog h3 { font-size: 14px; margin: 12px 0 4px; }
-.dialog ul { margin: 0; padding-left: 20px; line-height: 1.8; }
-.dialog small { color: var(--muted); }
 .dialog p { margin: 0; }
 .msg-time { font-size: 11px; color: var(--muted); }
 .msg-system { align-self: center; text-align: center; margin: 6px auto; font-size: 12px; color: var(--muted); }
@@ -146,7 +145,15 @@ a { color: var(--primary); text-decoration: none; }
   .back-link { display: inline; }
   .me-dept { display: none; }
   .topnav { gap: 12px; }
-  .msg-row { max-width: 88%; }
+  .msg-body { max-width: 88%; }
   /* iOS 에서 입력칸을 누르면 화면이 확대되는 것 방지 (16px 이상) */
   .msg-input textarea, .room-create input, .auth-form input, .msg-edit textarea { font-size: 16px; }
 }
+
+/* 프로필 */
+.avatar { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; color: #fff; font-weight: 700; object-fit: cover; user-select: none; }
+.person-list { display: flex; flex-direction: column; gap: 4px; }
+.person { display: flex; align-items: center; gap: 10px; padding: 4px 2px; }
+.person-text { min-width: 0; line-height: 1.25; }
+.person-name { font-weight: 600; }
+.person-dept { font-size: 12px; color: var(--muted); }

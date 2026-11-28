@@ -2,6 +2,18 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import MessageItem from './MessageItem.jsx';
 
 const dateOf = (createdAt) => createdAt?.slice(0, 10) ?? '';
+const minutesOf = (createdAt) => (createdAt ? new Date(createdAt.replace(' ', 'T')).getTime() / 60000 : 0);
+
+// 같은 사람이 이어서 보낸 글(같은 날, 5분 이내)은 프로필·이름을 한 번만 보여 준다 (텔레그램·디스코드처럼)
+function isContinued(m, prev) {
+  return (
+    prev?.type === 'text' &&
+    m.type === 'text' &&
+    prev.user?.id === m.user?.id &&
+    dateOf(prev.createdAt) === dateOf(m.createdAt) &&
+    minutesOf(m.createdAt) - minutesOf(prev.createdAt) <= 5
+  );
+}
 
 // 메시지 목록 + 스크롤 관리
 // - 새 메시지: 맨 아래를 보고 있었거나 내가 보낸 거면 맨 아래로
@@ -55,6 +67,7 @@ export default function MessageList({ messages, hasMore, loadingOlder, onLoadOld
           )}
           <MessageItem
             message={m}
+            continued={isContinued(m, messages[i - 1])}
             mine={m.type === 'text' && m.user?.id === myId}
             unread={m.deletedAt ? 0 : (unreadCountOf?.(m) ?? 0)}
             selected={selectedId === m.id}
