@@ -6,6 +6,7 @@ import { findUserById } from '../auth/auth.service.js';
 import * as drive from './drive.service.js';
 import { uploadFiles, uploadErrorMessage } from './upload.js';
 import { signDownload, verifyDownload, LINK_SECONDS } from './downloadLink.js';
+import contentRoutes, { versionOf } from './content.routes.js'; // [편집기 시험판 A]
 
 // 공유 드라이브 API. 권한 확인은 모두 drive.service → permissions.assertCan 에서 (S1)
 const router = Router();
@@ -42,6 +43,7 @@ router.get('/download/:token', async (req, res) => {
   const file = await drive.findFile(user, fileId, 'view'); // 받는 순간 권한을 다시 확인
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('Cache-Control', 'private, no-store');
+  res.set('X-File-Version', versionOf(file.storedName)); // [편집기 시험판 A] 편집기가 저장할 때 "이 판을 고쳤다"고 알려 줌
   const send = inline
     ? (cb) => res.sendFile(drive.storedPath(file.storedName), { headers: { 'Content-Type': file.mimeType, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.name)}` } }, cb)
     : (cb) => res.download(drive.storedPath(file.storedName), file.name, { dotfiles: 'allow' }, cb);
@@ -204,6 +206,9 @@ router.delete('/trash/:kind/:id', async (req, res) => {
   changed();
   res.json({ ok: true });
 });
+
+// [편집기 시험판 A] PUT /files/:id/content — 웹 편집기에서 저장 (지우려면 이 줄과 위 import 만)
+router.use(contentRoutes);
 
 // 이 라우터 안에서 난 오류: 드라이브 오류·업로드 오류는 안내 문구로, 나머지는 공통 오류 처리로
 router.use((err, req, res, next) => {

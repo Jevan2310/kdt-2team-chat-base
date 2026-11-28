@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.js';
 import { socket } from '../lib/socket.js';
 import { driveApi, downloadFile, fileIcon, formatDate, formatSize, rankOf, uploadToFolder } from '../lib/drive.js';
@@ -9,6 +9,8 @@ import MoveDialog from '../components/drive/MoveDialog.jsx';
 import ContextMenu from '../components/common/ContextMenu.jsx';
 import Dialog from '../components/common/Dialog.jsx';
 import PermissionDialog from '../components/drive/PermissionDialog.jsx';
+import FileViewer from '../editors/FileViewer.jsx'; // [편집기 시험판 A]
+import { editorFor } from '../editors/registry.js'; // [편집기 시험판 A]
 
 // 공유 드라이브: /drive (맨 위) · /drive/:folderId (폴더) · /drive/trash (휴지통)
 // 9단계: 로그인한 사람 모두 같은 폴더를 본다. 폴더별 권한은 10단계.
@@ -20,6 +22,7 @@ export default function DrivePage({ trash = false }) {
   const viewKey = trash ? 'trash' : invalid ? 'invalid' : String(folderId ?? 'root'); // 지금 보려는 화면
   const { token } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams(); // [편집기 시험판 A] ?file=ID 면 가운데에서 그 파일을 연다
 
   const [tree, setTree] = useState([]); // 내가 볼 수 있는 폴더 [{ id, parentId, name, locked, level }]
   const [canCreateRoot, setCanCreateRoot] = useState(false); // 관리자만
@@ -127,6 +130,9 @@ export default function DrivePage({ trash = false }) {
   };
 
   const download = (file) => downloadFile(file, token).catch((err) => setNotice(err.message));
+  // [편집기 시험판 A] 열 수 있는 종류면 가운데에서 열고, 아니면 예전처럼 내려받기
+  const openFile = (file) => (editorFor(file.name) ? setSearchParams({ file: String(file.id) }) : download(file));
+  const closeFile = () => setSearchParams({});
 
   // 메뉴 열기: 우클릭은 그 자리, ⋯ 버튼은 버튼 아래
   const openMenu = (e, item) => {
@@ -175,6 +181,8 @@ export default function DrivePage({ trash = false }) {
 
   const path = current?.path ?? [];
   const treePath = contents?.path ?? []; // 트리는 불러오는 동안에도 펼친 상태 유지
+  const openId = Number(searchParams.get('file')) || null; // [편집기 시험판 A]
+  const openedFile = !trash && openId ? current?.files.find((f) => f.id === openId) : null;
   const rows = current
     ? [
         ...current.folders.map((f) => ({ ...f, kind: 'folder' })),
@@ -259,7 +267,17 @@ export default function DrivePage({ trash = false }) {
         {currentError && <p className="form-error drive-error">{currentError} <Link to="/drive">드라이브 맨 위로</Link></p>}
         {!currentError && !current && <p className="muted drive-loading">불러오는 중…</p>}
 
-        {!currentError && current && (
+        {/* [편집기 시험판 A] 파일을 열면 목록 대신 편집 화면 */}
+        {!currentError && openedFile && (
+          <FileViewer key={openedFile.id} file={openedFile} canEdit={myRank >= 2} token={token} onClose={closeFile} />
+        )}
+        {!currentError && current && openId && !openedFile && (
+          <p className="drive-notice" role="status">
+            그 파일이 이 폴더에 없어요 (옮겨졌거나 지워졌어요). <button type="button" className="link-button" onClick={closeFile}>목록으로</button>
+          </p>
+        )}
+
+        {!currentError && current && !openedFile && (
           <div className="drive-table-wrap">
             <table className="drive-table">
               <thead>
@@ -293,7 +311,7 @@ export default function DrivePage({ trash = false }) {
                             {item.locked && <span title="위 폴더 권한을 이어받지 않는 폴더"> 🔒</span>}
                           </Link>
                         ) : (
-                          <button type="button" className="file-name" onClick={() => download(item)} title="눌러서 내려받기">
+                          <button type="button" className="file-name" onClick={() => openFile(item)} title={editorFor(item.name) ? '눌러서 열기' : '눌러서 내려받기'}>
                             {fileIcon(item.name)} {item.name}
                           </button>
                         )}
@@ -333,7 +351,12 @@ export default function DrivePage({ trash = false }) {
           {menu.item.kind === 'folder' ? (
             <button type="button" role="menuitem" onClick={menuAction(() => navigate(`/drive/${menu.item.id}`))}>📂 열기</button>
           ) : (
-            <button type="button" role="menuitem" onClick={menuAction(() => download(menu.item))}>⬇️ 내려받기</button>
+            <>
+              {editorFor(menu.item.name) && (
+                <button type="button" role="menuitem" onClick={menuAction(() => openFile(menu.item))}>👁️ 열기</button>
+              )}
+              <button type="button" role="menuitem" onClick={menuAction(() => download(menu.item))}>⬇️ 내려받기</button>
+            </>
           )}
           {itemRank(menu.item) >= 2 && (
             <>

@@ -47,6 +47,7 @@
 | DELETE | `/api/drive/folders/:id` | — | `{ ok }` → 휴지통 (아래 폴더·파일도 같이 숨겨짐) | 404 |
 | POST | `/api/drive/folders/:id/files` | multipart, 칸 이름 `files` (최대 20개, 하나 50MB) | `201 { files: [{ id, name, size }] }` | 400 실행 파일, 404 폴더 없음(올리는 중 휴지통 포함, 이미 쓴 파일은 지움), 413 너무 큼 |
 | POST | `/api/drive/files/:id/link` | `{ inline? }` | `{ url: '/api/drive/download/<표>', expiresIn: 60 }` (보기) | 404 |
+| PUT | `/api/drive/files/:id/content` 🧪 | multipart `baseVersion`, `file` | `{ file: { id, size, updatedAt, version } }` (편집) — 편집기 시험판 A. `baseVersion` 은 내려받기 응답 머리글 `X-File-Version` | 400·403·404·409(누가 먼저 저장)·413 |
 | GET | `/api/drive/download/:token` | — (로그인 헤더 없이) | 파일 (`attachment`, `nosniff`, `no-store`). 받는 순간 권한을 다시 확인, 다 보낸 뒤 기록 | 410 만료·잘못된 표, 404 권한 없어짐·파일 없음 |
 | PATCH | `/api/drive/files/:id` | `{ name?, folderId? }` | `{ file }` | 400 이름 규칙·실행 파일 확장자로 바꾸기, 404 |
 | DELETE | `/api/drive/files/:id` | — | `{ ok }` → 휴지통 | 404 |

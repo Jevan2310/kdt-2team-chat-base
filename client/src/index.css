@@ -16,6 +16,8 @@
   color: var(--text);
   background: var(--bg);
 }
+/* 이 앱은 밝은 화면만 디자인함 → 다크 모드 PC에서도 버튼·입력칸을 밝게 (라이브러리 CSS가 color-scheme 을 바꿔도 이기게 html:root) */
+html:root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; }
 a { color: var(--primary); text-decoration: none; }
