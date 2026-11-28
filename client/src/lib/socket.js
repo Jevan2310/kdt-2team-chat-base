@@ -19,3 +19,13 @@ function subscribe(onChange) {
 export function useSocketConnected() {
   return useSyncExternalStore(subscribe, () => socket.connected);
 }
+
+// 서버 응답(ack)을 기다리되 ms 안에 안 오면 실패로 끝낸다.
+// 보내는 순간 연결이 끊기면 응답이 영영 안 와서 보내기 버튼·화면이 멈춰 있던 문제를 막는다.
+export function emitAck(event, data, ms = 8000) {
+  return new Promise((resolve) => {
+    socket.timeout(ms).emit(event, data, (err, res) => {
+      resolve(err ? { ok: false, message: '서버 응답이 없어요. 연결을 확인하고 다시 시도해 주세요.' } : (res ?? { ok: true }));
+    });
+  });
+}

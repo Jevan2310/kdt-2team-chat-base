@@ -30,7 +30,11 @@ router.patch('/me', async (req, res) => {
 // PUT /api/users/me/avatar  본문 = 이미지 파일 그대로 (Content-Type: image/jpeg | image/png | image/webp) → { user }
 router.put(
   '/me/avatar',
-  express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: AVATAR_MAX_BYTES }),
+  (req, res, next) =>
+    express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: AVATAR_MAX_BYTES })(req, res, (err) => {
+      if (err?.type === 'entity.too.large') return res.status(413).json({ message: '파일이 너무 커요. 2MB 이하로 올려 주세요.' });
+      next(err);
+    }),
   async (req, res) => {
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return res.status(400).json({ message: 'JPG·PNG·WEBP 사진만 올릴 수 있어요.' });

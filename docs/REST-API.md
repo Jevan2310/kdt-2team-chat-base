@@ -19,7 +19,7 @@
 | GET | `/api/rooms/:roomId` | ✅ | — | `{ room, members: [{ id, nickname, department, role, avatarUrl, joinedAt, lastReadMessageId }], joined }` | 404 없는 방 |
 | POST | `/api/rooms/:roomId/join` | ✅ | — | `{ joined: true, isNew }` + 처음이면 소켓 `room:members` | 404 |
 | POST | `/api/rooms/:roomId/leave` | ✅ | — | `{ left }` + 소켓 `room:members` | 404 |
-| GET | `/api/rooms/:roomId/messages?before=&limit=` | ✅ 참여자만 | `before`: 이 메시지 id보다 이전 (없으면 최근), `limit`: 1~100 (기본 50) | `{ messages, hasMore }` (오래된 것 → 최근 순) | 403 참여 안 함, 404 |
+| GET | `/api/rooms/:roomId/messages?before=&after=&limit=` | ✅ 참여자만 | `before`: 이 id보다 이전 (이전 대화 불러오기) / `after`: 이 id보다 뒤 (다시 연결됐을 때 빈틈 채우기) / 둘 다 없으면 최근. `limit` 1~100 (기본 50). 정수가 아닌 값은 무시 | `{ messages, hasMore }` (오래된 것 → 최근 순) | 403 참여 안 함, 404 |
 
 ## user 모양
 
@@ -39,12 +39,12 @@
 |---|---|---|---|---|
 | GET | `/api/drive/tree` | — | `{ folders: [{ id, parentId, name }] }` (휴지통·휴지통 안 폴더 제외) | — |
 | GET | `/api/drive/folders/:id/contents` | `:id` = 폴더 id 또는 `root` | `{ folder, path: [{ id, name }], folders, files }` (맨 위에는 폴더만) | 404 |
-| POST | `/api/drive/folders` | `{ parentId: null\|id, name }` (1~100자, `/ \` 금지, 같은 위치 같은 이름 금지) | `201 { folder }` | 400, 404, 409 |
-| PATCH | `/api/drive/folders/:id` | `{ name?, parentId? }` (`parentId: null` = 맨 위로) | `{ folder }` | 400 자기 안으로 옮기기, 409 이름 겹침 |
+| POST | `/api/drive/folders` | `{ parentId: null\|id, name }` (1~100자, `/ \` 금지, 같은 위치 같은 이름 금지) | `201 { folder }` | 400 이름 규칙, 404 위 폴더 없음, 409 이름 겹침 |
+| PATCH | `/api/drive/folders/:id` | `{ name?, parentId? }` (`parentId: null` = 맨 위로) | `{ folder }` | 400 자기 안으로 옮기기, 404, 409 이름 겹침 |
 | DELETE | `/api/drive/folders/:id` | — | `{ ok }` → 휴지통 (아래 폴더·파일도 같이 숨겨짐) | 404 |
-| POST | `/api/drive/folders/:id/files` | multipart, 칸 이름 `files` (최대 20개, 하나 50MB) | `201 { files: [{ id, name, size }] }` | 400 실행 파일·폴더 없음, 413 너무 큼 |
-| GET | `/api/drive/files/:id/download` | — | 파일 (`Content-Disposition: attachment`, `application/octet-stream`, `nosniff`) | 404 |
-| PATCH | `/api/drive/files/:id` | `{ name?, folderId? }` | `{ file }` | 400, 404 |
+| POST | `/api/drive/folders/:id/files` | multipart, 칸 이름 `files` (최대 20개, 하나 50MB) | `201 { files: [{ id, name, size }] }` | 400 실행 파일, 404 폴더 없음(올리는 중 휴지통 포함, 이미 쓴 파일은 지움), 413 너무 큼 |
+| GET | `/api/drive/files/:id/download` | — | 파일 (`Content-Disposition: attachment`, `application/octet-stream`, `nosniff`). 다 보낸 뒤에 기록 | 404 (DB에도 디스크에도 없으면) |
+| PATCH | `/api/drive/files/:id` | `{ name?, folderId? }` | `{ file }` | 400 이름 규칙·실행 파일 확장자로 바꾸기, 404 |
 | DELETE | `/api/drive/files/:id` | — | `{ ok }` → 휴지통 | 404 |
 | GET | `/api/drive/trash` | — | `{ folders, files }` (직접 지운 것만, `from` = 원래 위치) | — |
 | POST | `/api/drive/trash/folders\|files/:id/restore` | — | `{ ok }` | 409 위 폴더가 휴지통에 있음·이름 겹침 |
@@ -53,7 +53,10 @@
 - file 모양: `{ id, folderId, name, mimeType, size, createdAt, updatedAt, uploadedBy: { id, nickname } }`
 - 바뀔 때마다 소켓 `drive:changed` → 화면이 다시 불러옴
 - 모든 동작은 `file_activity` 표에 기록 (누가, 무엇을, 언제)
-- 파일은 `server/storage/files/<무작위 32자>`에 저장하고 원래 이름은 DB에만 둔다. 실행 파일(exe·msi·bat·ps1·jar·apk·dmg 등)은 막는다
+- 파일은 `server/storage/files/<무작위 32자>`에 저장하고 원래 이름은 DB에만 둔다
+- 실행 파일(exe·msi·bat·cmd·ps1·vbs·js·hta·lnk·reg·jar·apk·dmg·sh 등)은 **올리기와 이름 바꾸기 둘 다** 막는다. 끝의 점·공백은 지운다(`a.exe.` 우회 방지), 이름은 NFC로 맞춘다
+- 폴더 트리를 바꾸는 작업(만들기·옮기기·휴지통·복원·영구 삭제)은 DB 이름 잠금(`GET_LOCK`)으로 한 번에 하나씩 → 이름 중복·순환 방지
+- 영구 삭제는 파일 → 가장 깊은 폴더부터 한 단계씩 지운다 (MySQL CASCADE 15단계 제한 때문)
 - 10단계에서 모든 주소에 폴더 권한 확인이 들어간다
 
 ## 프로필 사진 규칙
@@ -70,7 +73,7 @@
   "createdAt": "2026-11-27 13:19:58",
   "editedAt": null, "deletedAt": null,
   "reactions": [{ "emoji": "👍", "userIds": [2, 3] }],
-  "user": { "id": 1, "nickname": "김테스트", "department": "개발팀", "role": "user" }
+  "user": { "id": 1, "nickname": "김테스트", "department": "개발팀", "role": "user", "avatarUrl": null }
 }
 ```
 

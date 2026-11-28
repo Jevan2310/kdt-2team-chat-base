@@ -2,15 +2,16 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
 import { listRooms, findRoom, listMembers, createRoom, joinRoom, leaveRoom, isMember } from './rooms.service.js';
-import { listMessages, saveMessage } from '../messages/messages.service.js';
+import { listMessages, listMessagesAfter, saveMessage } from '../messages/messages.service.js';
+import { toId, toIntInRange } from '../../lib/validate.js';
 
 const router = Router();
 router.use(requireAuth); // 이 아래 API는 모두 로그인 필요
 
 // 주소의 :roomId 를 숫자로 바꾸고, 없는 방이면 404
 async function loadRoom(req, res, next) {
-  const roomId = Number(req.params.roomId);
-  const room = Number.isInteger(roomId) ? await findRoom(roomId) : null;
+  const roomId = toId(req.params.roomId);
+  const room = roomId ? await findRoom(roomId) : null;
   if (!room) return res.status(404).json({ message: '없는 채팅방이에요.' });
   req.room = room;
   next();
@@ -63,14 +64,16 @@ router.post('/:roomId/leave', loadRoom, async (req, res) => {
   res.json({ left });
 });
 
-// GET /api/rooms/:roomId/messages?before=<메시지 id>&limit=50 → { messages, hasMore }
+// GET /api/rooms/:roomId/messages?before=<id>&limit=50 → { messages, hasMore }  (최근 것부터 거꾸로, 이전 대화 불러오기)
+// GET /api/rooms/:roomId/messages?after=<id>&limit=100 → { messages, hasMore }  (그 뒤로 온 것, 다시 연결됐을 때 빈틈 채우기)
 router.get('/:roomId/messages', loadRoom, async (req, res) => {
   if (!(await isMember(req.room.id, req.user.id))) {
     return res.status(403).json({ message: '참여한 방의 메시지만 볼 수 있어요.' });
   }
-  const before = Number(req.query.before) || null;
-  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
-  res.json(await listMessages(req.room.id, { before, limit }));
+  const limit = toIntInRange(req.query.limit, { min: 1, max: 100, fallback: 50 });
+  const after = toId(req.query.after);
+  if (after) return res.json(await listMessagesAfter(req.room.id, { after, limit }));
+  res.json(await listMessages(req.room.id, { before: toId(req.query.before), limit }));
 });
 
 export default router;

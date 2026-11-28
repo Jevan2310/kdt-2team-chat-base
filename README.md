@@ -147,6 +147,7 @@ npm run dev               # http://localhost:5173
 | 증상 | 확인할 것 |
 |---|---|
 | DB ❌ `ER_ACCESS_DENIED_ERROR` | `server/.env`의 DB 사용자·비밀번호 |
+| 서버가 `JWT_SECRET … 넣어 주세요`로 안 켜짐 | `server/.env`에 `JWT_SECRET`(16자 이상 아무 긴 문자열)이 있는지 — 없으면 일부러 안 켜짐 (로그인 위조 방지) |
 | DB ❌ `ER_BAD_DB_ERROR` / `ER_NO_SUCH_TABLE` | `db/schema.sql`을 실행했는지 |
 | 서버 ❌ `요청 실패 (500/504)` | 서버(`npm run dev`)가 켜져 있는지, 포트 3000 |
 | 소켓이 계속 "연결 중…" | 서버가 켜져 있는지, 화면을 5173으로 열었는지 |

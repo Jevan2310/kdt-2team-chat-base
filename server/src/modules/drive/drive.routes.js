@@ -1,3 +1,4 @@
+import { unlink } from 'node:fs/promises';
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/requireAuth.js';
 import { getIo } from '../../socket/io.js';
@@ -9,7 +10,13 @@ const router = Router();
 router.use(requireAuth);
 
 // 드라이브가 바뀌면 접속한 모두에게 알림 → 그 폴더를 보고 있는 화면이 다시 불러옴
-const changed = (...folderIds) => getIo()?.emit('drive:changed', { folderIds: folderIds.filter((id) => id !== undefined) });
+const changed = (...folderIds) => {
+  try {
+    getIo().emit('drive:changed', { folderIds: folderIds.filter((id) => id !== undefined) });
+  } catch {
+    // 소켓이 아직 준비 전이면 알림만 건너뜀 (저장은 이미 끝남)
+  }
+};
 
 // 주소의 :id → 숫자. 'root' 는 맨 위(null)
 function idParam(value, { allowRoot = false } = {}) {
@@ -74,7 +81,14 @@ router.post(
   uploadFiles,
   async (req, res) => {
     if (!req.files?.length) return res.status(400).json({ message: '올릴 파일을 골라 주세요.' });
-    const files = await drive.saveUploadedFiles(req.folderId, req.files, req.user.id);
+    let files;
+    try {
+      files = await drive.saveUploadedFiles(req.folderId, req.files, req.user.id);
+    } catch (err) {
+      // DB 기록이 실패하면(폴더가 사라짐 등) 디스크에 이미 쓴 파일도 지운다 → 주인 없는 파일이 남지 않게
+      await Promise.all(req.files.map((f) => unlink(f.path).catch(() => {})));
+      throw err;
+    }
     for (const f of files) await drive.logActivity(req.user.id, 'upload', { folderId: req.folderId, fileId: f.id, detail: { name: f.name, size: f.size } });
     changed(req.folderId);
     res.status(201).json({ files });
@@ -84,9 +98,18 @@ router.post(
 // GET /api/drive/files/:id/download → 파일 (항상 "내려받기"로, 브라우저가 열어서 실행하지 않게)
 router.get('/files/:id/download', async (req, res) => {
   const file = await drive.findVisibleFile(idParam(req.params.id));
-  await drive.logActivity(req.user.id, 'download', { folderId: file.folderId, fileId: file.id, detail: { name: file.name } });
   res.set('X-Content-Type-Options', 'nosniff');
-  res.download(drive.storedPath(file.storedName), file.name, { dotfiles: 'allow' });
+  res.download(drive.storedPath(file.storedName), file.name, { dotfiles: 'allow' }, (err) => {
+    if (!err) {
+      // 다 보낸 뒤에만 기록
+      drive.logActivity(req.user.id, 'download', { folderId: file.folderId, fileId: file.id, detail: { name: file.name } }).catch(console.error);
+      return;
+    }
+    if (res.headersSent) return; // 보내는 중에 끊긴 것 (받는 쪽이 취소 등)
+    if (err.code === 'ENOENT' || err.status === 404) return res.status(404).json({ message: '파일 내용이 서버에 없어요. 관리자에게 알려 주세요.' });
+    console.error(err);
+    res.status(500).json({ message: '파일을 보내지 못했어요.' });
+  });
 });
 
 // PATCH /api/drive/files/:id { name?, folderId? }

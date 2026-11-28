@@ -29,11 +29,16 @@ export function UnreadProvider({ children }) {
     setCounts(Object.fromEntries(rooms.map((r) => [r.id, r.unreadCount ?? 0])));
   }, []);
 
+  // 로그인할 때, 그리고 끊겼다 다시 연결될 때(그사이 놓친 알림이 있을 수 있음) 서버 기준으로 다시 맞춘다
   useEffect(() => {
     if (!token) return;
-    api('/rooms', { token })
-      .then((data) => syncFromRooms(data.rooms))
-      .catch(() => {});
+    const resync = () =>
+      api('/rooms', { token })
+        .then((data) => syncFromRooms(data.rooms))
+        .catch(() => {});
+    resync();
+    socket.on('connect', resync);
+    return () => socket.off('connect', resync);
   }, [token, syncFromRooms]);
 
   const dismiss = useCallback((id) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
@@ -61,9 +66,10 @@ export function UnreadProvider({ children }) {
   const total = useMemo(() => Object.values(counts).reduce((a, b) => a + b, 0), [counts]);
 
   // 브라우저 탭 제목에 안 읽은 개수
+  const shownTotal = token ? total : 0;
   useEffect(() => {
-    document.title = total > 0 ? `(${total}) ${BASE_TITLE}` : BASE_TITLE;
-  }, [total]);
+    document.title = shownTotal > 0 ? `(${shownTotal}) ${BASE_TITLE}` : BASE_TITLE;
+  }, [shownTotal]);
 
   const value = useMemo(
     () => ({ counts: token ? counts : {}, total: token ? total : 0, toasts, dismiss, syncFromRooms }),

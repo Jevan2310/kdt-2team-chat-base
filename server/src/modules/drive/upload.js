@@ -1,14 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 import multer from 'multer';
 import { config } from '../../config.js';
-import { DriveError } from './drive.service.js';
-
-// 올리면 안 되는 실행 파일 (받은 사람이 실수로 실행하면 위험)
-const BLOCKED_EXTENSIONS = new Set([
-  'exe', 'msi', 'bat', 'cmd', 'com', 'scr', 'pif', 'ps1', 'vbs', 'vbe', 'wsf', 'jar', 'apk', 'dmg', 'pkg', 'app',
-]);
+import { uploadName } from './drive.service.js';
 
 mkdirSync(config.storageDir, { recursive: true });
 
@@ -21,10 +15,14 @@ export const uploadFiles = multer({
   }),
   defParamCharset: 'utf8', // 한글 파일 이름이 깨지지 않게
   limits: { fileSize: config.maxFileMb * 1024 * 1024, files: 20 },
+  // 디스크에 쓰기 전에 이름·확장자 검사 (실행 파일이면 여기서 거절 → 저장 안 됨)
   fileFilter: (req, file, cb) => {
-    const ext = path.extname(file.originalname).slice(1).toLowerCase();
-    if (BLOCKED_EXTENSIONS.has(ext)) return cb(new DriveError(400, `실행 파일(.${ext})은 올릴 수 없어요.`));
-    cb(null, true);
+    try {
+      uploadName(file.originalname);
+      cb(null, true);
+    } catch (err) {
+      cb(err);
+    }
   },
 }).array('files', 20);
 

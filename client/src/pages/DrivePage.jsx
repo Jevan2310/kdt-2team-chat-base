@@ -155,7 +155,11 @@ export default function DrivePage({ trash = false }) {
         <header className="drive-header">
           <nav className="breadcrumb" aria-label="현재 위치">
             {trash ? (
-              <span>🗑️ 휴지통</span>
+              <>
+                <Link to="/drive">드라이브</Link>
+                <span className="crumb-sep">›</span>
+                <span>🗑️ 휴지통</span>
+              </>
             ) : (
               <>
                 <Link to="/drive">드라이브</Link>
@@ -170,6 +174,8 @@ export default function DrivePage({ trash = false }) {
           </nav>
           {!trash && (
             <div className="drive-actions">
+              {/* 휴대폰은 왼쪽 트리(휴지통 링크 포함)가 숨겨지므로 여기에도 휴지통 */}
+              <Link to="/drive/trash" className="only-sm drive-trash-button" aria-label="휴지통">🗑️</Link>
               <button type="button" onClick={() => setDialog({ type: 'newFolder' })}>＋ 폴더</button>
               {canUpload && (
                 <button type="button" className="primary" onClick={() => fileInputRef.current?.click()} disabled={Boolean(upload)}>

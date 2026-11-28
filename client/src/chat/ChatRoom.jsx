@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { socket, useSocketConnected } from '../lib/socket.js';
+import { socket, useSocketConnected, emitAck } from '../lib/socket.js';
 import { useAuth } from '../auth/useAuth.js';
 import MessageList from '../components/messages/MessageList.jsx';
 import MessageInput from '../components/messages/MessageInput.jsx';
@@ -14,8 +14,6 @@ function mergeMessages(...lists) {
   return [...byId.values()].sort((a, b) => a.id - b.id);
 }
 
-// 소켓 emit 을 await 할 수 있게 (서버가 ack 로 답함)
-const emitWithAck = (event, data) => new Promise((resolve) => socket.emit(event, data, resolve));
 
 // 채팅 팝업 안의 대화 화면. 방이 바뀌면 부모가 key 를 바꿔 화면 상태를 처음부터 새로 만든다.
 // onBack: 방 목록으로, onMinimize: 팝업 내리기
@@ -33,13 +31,20 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
   const [readersOf, setReadersOf] = useState(null); // 읽음 확인 창을 연 메시지
   const [notice, setNotice] = useState(''); // 수정·삭제·반응 실패 안내
 
+  // 다시 연결됐을 때 "여기 뒤로 온 것"을 받아 오는 기준 (onConnect 안에서 최신 값을 쓰려고 ref)
+  const lastIdRef = useRef(0);
+  useEffect(() => {
+    lastIdRef.current = messages.at(-1)?.id ?? 0;
+  }, [messages]);
+
   // 방에 들어오면: 참여 → 소켓 방 입장 → 방 정보·참여자·최근 메시지
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         await api(`/rooms/${id}/join`, { method: 'POST', token });
-        if (socket.connected) await emitWithAck('room:join', { roomId: id });
+        if (cancelled) return; // 그사이 다른 방으로 옮겼으면 이 방 소켓 그룹에 들어가지 않음
+        if (socket.connected) await emitAck('room:join', { roomId: id });
         const [detail, history] = await Promise.all([
           api(`/rooms/${id}`, { token }),
           api(`/rooms/${id}/messages`, { token }),
@@ -81,11 +86,31 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
       if (changedId !== id) return;
       setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, lastReadMessageId } : m)));
     };
-    // 끊겼다 다시 연결되면 방에 다시 들어가고, 그사이 놓친 메시지를 받아 온다
+    // 끊겼다 다시 연결되면: 방에 다시 들어가고, 마지막으로 받은 메시지 "뒤로" 온 것을 빈틈없이 받아 온다
+    // (예전에는 최근 50개만 받아서, 그사이 50개 넘게 오면 중간이 비었다)
     const onConnect = async () => {
-      await emitWithAck('room:join', { roomId: id });
-      const history = await api(`/rooms/${id}/messages`, { token }).catch(() => null);
-      if (history) setMessages((prev) => mergeMessages(prev, history.messages));
+      await emitAck('room:join', { roomId: id });
+      api(`/rooms/${id}`, { token }).then((d) => setMembers(d.members)).catch(() => {}); // 읽음 숫자도 최신으로
+      let cursor = lastIdRef.current;
+      const caught = [];
+      for (let page = 0; cursor && page < 10; page++) {
+        const res = await api(`/rooms/${id}/messages?after=${cursor}&limit=100`, { token }).catch(() => null);
+        if (!res) return;
+        caught.push(...res.messages);
+        if (!res.hasMore) {
+          // 끊긴 사이 수정·삭제·반응도 반영되게 최근 대화도 한 번 더 받아 합친다
+          const latest = await api(`/rooms/${id}/messages`, { token }).catch(() => null);
+          setMessages((prev) => mergeMessages(prev, caught, latest?.messages ?? []));
+          return;
+        }
+        cursor = res.messages.at(-1).id;
+      }
+      // 1000개 넘게 밀렸으면(또는 받은 게 없었으면) 최근 대화로 새로 시작 → 중간이 빈 채로 남지 않게
+      const latest = await api(`/rooms/${id}/messages`, { token }).catch(() => null);
+      if (latest) {
+        setMessages(latest.messages);
+        setHasMore(latest.hasMore);
+      }
     };
 
     // 누가 프로필(이름·부서·사진)을 바꿨으면 참여자 목록과 메시지의 보낸 사람 정보를 바꿔 끼운다
@@ -150,7 +175,7 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
     const byId = new Map(members.map((m) => [m.id, m.nickname]));
     const change = async (event, data) => {
       if (!socket.connected) return { ok: false, message: '연결이 끊겨 있어요.' };
-      const result = await emitWithAck(event, data);
+      const result = await emitAck(event, data);
       if (result.ok) setMessages((prev) => mergeMessages(prev, [result.message]));
       return result;
     };
@@ -168,7 +193,7 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
   const sendMessage = useCallback(
     async (content) => {
       if (!socket.connected) return { ok: false, message: '연결이 끊겨 있어요. 잠시 후 다시 보내 주세요.' };
-      const result = await emitWithAck('message:send', { roomId: id, content });
+      const result = await emitAck('message:send', { roomId: id, content });
       if (result.ok) setMessages((prev) => mergeMessages(prev, [result.message]));
       return result;
     },

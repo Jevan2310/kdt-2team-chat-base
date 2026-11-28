@@ -1,6 +1,6 @@
 import { unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { pool } from '../../db.js';
+import { pool, withLock, withTx } from '../../db.js';
 import { config } from '../../config.js';
 
 // 드라이브에서 생기는 "사용자에게 보여 줄" 오류 (상태 코드 + 안내 문구)
@@ -12,6 +12,15 @@ export class DriveError extends Error {
 }
 
 export const storedPath = (storedName) => path.join(config.storageDir, storedName);
+
+// 폴더 트리를 바꾸는 작업(만들기·옮기기·지우기·복원·영구 삭제)은 한 번에 하나씩 → 이름 중복·순환이 생기지 않게
+const TREE_LOCK = 'drive_tree';
+
+// 받은 사람이 실수로 실행하면 위험한 파일 (Windows 실행·스크립트·바로가기 포함)
+const BLOCKED_EXTENSIONS = new Set([
+  'exe', 'msi', 'msp', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'msc', 'reg', 'lnk', 'url', 'scf', 'hta',
+  'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'jar', 'apk', 'dmg', 'pkg', 'app', 'sh', 'command',
+]);
 
 // ── 이름 규칙 ──
 // 앞뒤 공백 제거, 1~max자, 경로 문자(/ \)·제어 문자 금지, "." ".." 금지
@@ -25,10 +34,25 @@ export function cleanName(name, max) {
   return text;
 }
 
+// 파일 이름 검사 (올리기·이름 바꾸기 공통): 확장자가 막힌 종류면 거절
+// 끝의 점·공백은 지운다 (Windows 는 "a.exe." 를 "a.exe" 로 저장하므로 우회 방지)
+export function cleanFileName(name) {
+  const text = cleanName(String(name ?? '').normalize('NFC').replace(/[. ]+$/, ''), 255);
+  const ext = path.extname(text).slice(1).toLowerCase();
+  if (BLOCKED_EXTENSIONS.has(ext)) throw new DriveError(400, `실행 파일(.${ext})은 올리거나 이름을 바꿔 만들 수 없어요.`);
+  return text;
+}
+
+// 올린 파일의 원래 이름 정리: 경로 문자(/ \)·제어 문자는 _ 로 바꾸고, 비면 "이름 없음" (맥에서는 \ 가 든 이름도 있어서 거절 대신 바꿈)
+export function uploadName(original) {
+  const replaced = path.basename(String(original ?? '')).replace(/[/\\\u0000-\u001f]/g, '_').trim().slice(0, 255);
+  return cleanFileName(replaced.replace(/[. ]+$/, '') ? replaced : '이름 없음');
+}
+
 // ── 폴더 트리 ──
 // 폴더 수가 많지 않은 사내 드라이브라 한 번에 다 읽어 메모리에서 계산한다 (트리·경로·휴지통 판단)
-async function loadFolders() {
-  const [rows] = await pool.query(
+async function loadFolders(db = pool) {
+  const [rows] = await db.query(
     `SELECT id, parent_id AS parentId, name, created_at AS createdAt, updated_at AS updatedAt,
             deleted_at AS deletedAt
        FROM folders`,
@@ -59,13 +83,19 @@ function isInside(map, id, ancestorId) {
   return false;
 }
 
-// 이 폴더와 그 아래 모든 폴더 id
-function subtreeIds(map, rootId) {
-  const ids = [rootId];
-  for (let i = 0; i < ids.length; i++) {
-    for (const f of map.values()) if (f.parentId === ids[i]) ids.push(f.id);
+// 이 폴더와 그 아래 모든 폴더 [{ id, depth }] (depth 0 = 이 폴더). 이미 본 폴더는 다시 안 봄 → 순환이 있어도 멈춤
+function subtree(map, rootId) {
+  const list = [{ id: rootId, depth: 0 }];
+  const seen = new Set([rootId]);
+  for (let i = 0; i < list.length; i++) {
+    for (const f of map.values()) {
+      if (f.parentId === list[i].id && !seen.has(f.id)) {
+        seen.add(f.id);
+        list.push({ id: f.id, depth: list[i].depth + 1 });
+      }
+    }
   }
-  return ids;
+  return list;
 }
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
@@ -129,39 +159,41 @@ export async function getContents(folderId) {
 }
 
 export async function createFolder({ parentId, name, userId }) {
-  const clean = cleanName(name, 100);
-  const map = await loadFolders();
-  if (parentId !== null) await visibleFolderOrThrow(map, parentId);
-  await assertNoSibling(map, parentId, clean);
-  const [result] = await pool.query('INSERT INTO folders (parent_id, name, created_by) VALUES (?, ?, ?)', [
-    parentId,
-    clean,
-    userId,
-  ]);
-  return { id: result.insertId, parentId, name: clean };
+  const clean = cleanName(String(name ?? '').normalize('NFC'), 100);
+  return withLock(TREE_LOCK, async (conn) => {
+    const map = await loadFolders(conn);
+    if (parentId !== null) await visibleFolderOrThrow(map, parentId);
+    await assertNoSibling(map, parentId, clean);
+    const [result] = await conn.query('INSERT INTO folders (parent_id, name, created_by) VALUES (?, ?, ?)', [parentId, clean, userId]);
+    return { id: result.insertId, parentId, name: clean };
+  });
 }
 
 // 이름 바꾸기·옮기기 (둘 중 하나 또는 둘 다). parentId: null = 맨 위로, undefined = 그대로
 export async function updateFolder(id, { name, parentId }) {
-  const map = await loadFolders();
-  const folder = await visibleFolderOrThrow(map, id);
-  const nextName = name === undefined ? folder.name : cleanName(name, 100);
-  const nextParent = parentId === undefined ? folder.parentId : parentId;
-  if (nextParent !== null) {
-    await visibleFolderOrThrow(map, nextParent);
-    if (isInside(map, nextParent, id)) throw new DriveError(400, '폴더를 자기 안으로 옮길 수 없어요.');
-  }
-  await assertNoSibling(map, nextParent, nextName, id);
-  await pool.query('UPDATE folders SET name = ?, parent_id = ? WHERE id = ?', [nextName, nextParent, id]);
-  return { before: { name: folder.name, parentId: folder.parentId }, after: { id, name: nextName, parentId: nextParent } };
+  const nextNameInput = name === undefined ? undefined : cleanName(String(name).normalize('NFC'), 100);
+  return withLock(TREE_LOCK, async (conn) => {
+    const map = await loadFolders(conn);
+    const folder = await visibleFolderOrThrow(map, id);
+    const nextName = nextNameInput ?? folder.name;
+    const nextParent = parentId === undefined ? folder.parentId : parentId;
+    if (nextParent !== null) {
+      await visibleFolderOrThrow(map, nextParent);
+      if (isInside(map, nextParent, id)) throw new DriveError(400, '폴더를 자기 안으로 옮길 수 없어요.');
+    }
+    await assertNoSibling(map, nextParent, nextName, id);
+    await conn.query('UPDATE folders SET name = ?, parent_id = ? WHERE id = ?', [nextName, nextParent, id]);
+    return { before: { name: folder.name, parentId: folder.parentId }, after: { id, name: nextName, parentId: nextParent } };
+  });
 }
 
 // 휴지통으로 (이 폴더만 표시 → 아래 폴더·파일은 같이 숨겨지고, 복원하면 같이 돌아옴)
 export async function trashFolder(id, userId) {
-  const map = await loadFolders();
-  const folder = await visibleFolderOrThrow(map, id);
-  await pool.query('UPDATE folders SET deleted_at = NOW(), deleted_by = ? WHERE id = ?', [userId, id]);
-  return folder;
+  return withLock(TREE_LOCK, async (conn) => {
+    const folder = await visibleFolderOrThrow(await loadFolders(conn), id);
+    await conn.query('UPDATE folders SET deleted_at = NOW(), deleted_by = ? WHERE id = ?', [userId, id]);
+    return folder;
+  });
 }
 
 // ── 파일 ──
@@ -186,23 +218,27 @@ export async function assertFolderVisible(folderId) {
   await visibleFolderOrThrow(await loadFolders(), folderId);
 }
 
-// multer 가 디스크에 저장한 파일들을 DB에 기록
+// multer 가 디스크에 저장한 파일들을 DB에 기록. 전부 성공하거나 전부 취소(트랜잭션)
+// 실패하면 부른 쪽(drive.routes)이 디스크에 남은 파일을 지운다
 export async function saveUploadedFiles(folderId, uploaded, userId) {
-  const saved = [];
-  for (const f of uploaded) {
-    const name = cleanName(path.basename(f.originalname).slice(0, 255) || '이름 없음', 255);
-    const [result] = await pool.query(
-      'INSERT INTO files (folder_id, original_name, stored_name, mime_type, size_bytes, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)',
-      [folderId, name, f.filename, (f.mimetype || 'application/octet-stream').slice(0, 100), f.size, userId],
-    );
-    saved.push({ id: result.insertId, name, size: f.size });
-  }
-  return saved;
+  await assertFolderVisible(folderId); // 올리는 동안 폴더가 휴지통에 갔을 수 있어서 한 번 더
+  return withTx(async (conn) => {
+    const saved = [];
+    for (const f of uploaded) {
+      const name = uploadName(f.originalname);
+      const [result] = await conn.query(
+        'INSERT INTO files (folder_id, original_name, stored_name, mime_type, size_bytes, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)',
+        [folderId, name, f.filename, (f.mimetype || 'application/octet-stream').slice(0, 100), f.size, userId],
+      );
+      saved.push({ id: result.insertId, name, size: f.size });
+    }
+    return saved;
+  });
 }
 
 export async function updateFile(id, { name, folderId }) {
   const file = await findVisibleFile(id);
-  const nextName = name === undefined ? file.name : cleanName(name, 255);
+  const nextName = name === undefined ? file.name : cleanFileName(name);
   const nextFolder = folderId === undefined ? file.folderId : folderId;
   if (nextFolder !== file.folderId) await assertFolderVisible(nextFolder);
   await pool.query('UPDATE files SET original_name = ?, folder_id = ? WHERE id = ?', [nextName, nextFolder, id]);
@@ -241,15 +277,17 @@ export async function listTrash() {
 }
 
 export async function restoreFolder(id) {
-  const map = await loadFolders();
-  const folder = map.get(id);
-  if (!folder?.deletedAt) throw new DriveError(404, '휴지통에 없는 폴더예요.');
-  if (folder.parentId !== null && isHidden(map, folder.parentId)) throw new DriveError(409, '위 폴더가 휴지통에 있어요. 위 폴더를 먼저 복원해 주세요.');
-  await assertNoSibling(map, folder.parentId, folder.name, id).catch(() => {
-    throw new DriveError(409, '같은 위치에 같은 이름의 폴더가 있어요. 그 폴더 이름을 바꾼 뒤 복원해 주세요.');
+  return withLock(TREE_LOCK, async (conn) => {
+    const map = await loadFolders(conn);
+    const folder = map.get(id);
+    if (!folder?.deletedAt) throw new DriveError(404, '휴지통에 없는 폴더예요.');
+    if (folder.parentId !== null && isHidden(map, folder.parentId)) throw new DriveError(409, '위 폴더가 휴지통에 있어요. 위 폴더를 먼저 복원해 주세요.');
+    await assertNoSibling(map, folder.parentId, folder.name, id).catch(() => {
+      throw new DriveError(409, '같은 위치에 같은 이름의 폴더가 있어요. 그 폴더 이름을 바꾼 뒤 복원해 주세요.');
+    });
+    await conn.query('UPDATE folders SET deleted_at = NULL, deleted_by = NULL WHERE id = ?', [id]);
+    return folder;
   });
-  await pool.query('UPDATE folders SET deleted_at = NULL, deleted_by = NULL WHERE id = ?', [id]);
-  return folder;
 }
 
 export async function restoreFile(id) {
@@ -262,16 +300,26 @@ export async function restoreFile(id) {
 
 const removeStored = (names) => Promise.all(names.map((n) => unlink(storedPath(n)).catch(() => {})));
 
-// 영구 삭제: 휴지통에 있는 것만. 폴더면 아래 폴더·파일까지 DB(외래 키 CASCADE)와 디스크에서 지운다
+// 영구 삭제: 휴지통에 있는 것만. 폴더면 아래 폴더·파일까지 DB와 디스크에서 지운다.
+// MySQL 은 CASCADE 를 15단계까지만 따라가서, 깊은 폴더도 지워지게 파일 → 가장 깊은 폴더부터 한 단계씩 직접 지운다
 export async function purgeFolder(id) {
-  const map = await loadFolders();
-  const folder = map.get(id);
-  if (!folder?.deletedAt) throw new DriveError(404, '휴지통에 없는 폴더예요.');
-  const ids = subtreeIds(map, id);
-  const [files] = await pool.query('SELECT stored_name AS storedName FROM files WHERE folder_id IN (?)', [ids]);
-  await pool.query('DELETE FROM folders WHERE id = ?', [id]);
-  await removeStored(files.map((f) => f.storedName));
-  return { folder, fileCount: files.length };
+  const result = await withLock(TREE_LOCK, async (conn) => {
+    const map = await loadFolders(conn);
+    const folder = map.get(id);
+    if (!folder?.deletedAt) throw new DriveError(404, '휴지통에 없는 폴더예요.');
+    const tree = subtree(map, id);
+    const ids = tree.map((t) => t.id);
+    const [files] = await conn.query('SELECT stored_name AS storedName FROM files WHERE folder_id IN (?)', [ids]);
+    await conn.query('DELETE FROM files WHERE folder_id IN (?)', [ids]);
+    const maxDepth = Math.max(...tree.map((t) => t.depth));
+    for (let depth = maxDepth; depth >= 0; depth--) {
+      const level = tree.filter((t) => t.depth === depth).map((t) => t.id);
+      await conn.query('DELETE FROM folders WHERE id IN (?)', [level]);
+    }
+    return { folder, storedNames: files.map((f) => f.storedName) };
+  });
+  await removeStored(result.storedNames); // DB 반영이 끝난 뒤에 디스크 파일 삭제
+  return { folder: result.folder, fileCount: result.storedNames.length };
 }
 
 export async function purgeFile(id) {

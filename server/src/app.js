@@ -34,8 +34,12 @@ app.use(
 app.use('/api', (req, res) => res.status(404).json({ message: '없는 API 주소예요.' }));
 
 // 처리 못 한 오류 (Express 5는 async 함수의 오류도 여기로 온다)
+// 상태 코드가 붙은 오류(잘못된 JSON 400, 너무 큼 413 …)는 그 코드로, 나머지만 500
 app.use((err, req, res, next) => {
-  if (err.type === 'entity.too.large') return res.status(413).json({ message: '파일이 너무 커요. 2MB 이하로 올려 주세요.' });
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ message: '요청 형식이 잘못됐어요.' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ message: '보낸 내용이 너무 커요.' });
+  if (err.status >= 400 && err.status < 500) return res.status(err.status).json({ message: err.expose === false ? '잘못된 요청이에요.' : err.message });
+  if (err.status === 503) return res.status(503).json({ message: err.message });
   console.error(err);
   res.status(500).json({ message: '서버 오류가 났어요.' });
 });

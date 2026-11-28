@@ -88,6 +88,17 @@ export async function listMessages(roomId, { before = null, limit = 50 } = {}) {
   return { messages: await withReactions(rows.slice(0, limit).reverse()), hasMore };
 }
 
+// after 보다 뒤에 온 메시지 limit개 (오래된 것 → 최근 순). 다시 연결됐을 때 놓친 것을 빈틈없이 받아 오는 용도
+export async function listMessagesAfter(roomId, { after, limit = 100 }) {
+  const [rows] = await pool.query(`${SELECT_MESSAGE} WHERE m.room_id = ? AND m.id > ? ORDER BY m.id ASC LIMIT ?`, [
+    roomId,
+    after,
+    limit + 1,
+  ]);
+  const hasMore = rows.length > limit;
+  return { messages: await withReactions(rows.slice(0, limit)), hasMore };
+}
+
 // 수정: 내용 바꾸고 수정 시각 기록
 export async function editMessage(id, content) {
   await pool.query('UPDATE messages SET content = ?, edited_at = NOW() WHERE id = ?', [content, id]);
