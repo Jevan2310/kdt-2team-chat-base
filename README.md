@@ -77,7 +77,7 @@ server/                 Express + Socket.IO (localhost:3000)
   src/db.js             MySQL 연결 풀
 db/schema.sql           테이블 (⚠️ 실행하면 기존 데이터 삭제)
 db/seed.sql             기본 데이터 (기본 채팅방 2개)
-db/migrations/          이미 만든 DB에 바뀐 점만 반영 (데이터 유지)
+db/migrations/          이미 만든 DB에 바뀐 점만 반영 (데이터 유지, npm run db:migrate 로 실행)
 docs/                   API·소켓 이벤트 약속 문서 → [REST API](docs/REST-API.md), [소켓 이벤트](docs/소켓-이벤트.md)
 ```
 
@@ -95,7 +95,15 @@ mysql -u root -p < db/schema.sql
 mysql -u root -p < db/seed.sql
 ```
 
-> 예전 단계의 DB를 쓰고 있으면 `schema.sql`을 다시 실행하지 말고 `db/migrations/`에서 아직 안 한 파일만 번호 순서대로 한 번씩 실행하세요 (데이터 유지). 6단계까지 썼다면 `007` → `008` → `009`.
+**이미 DB를 쓰고 있다면** (`schema.sql`을 다시 실행하면 데이터가 지워지니 하지 말고) 서버 폴더에서:
+
+```bash
+cd server
+npm run db:migrate -- --status   # 무엇을 했고 무엇이 남았는지
+npm run db:migrate               # 아직 안 한 DB 변경만 번호 순서대로 실행 (데이터 유지)
+```
+
+> 예전에 `db/migrations/` 파일을 **손으로** 실행했다면 기록이 없어서 다시 실행하려다 실패해요 (안내 문구가 나옴). 그때는 손으로 한 마지막 번호까지 "한 것"으로 표시만 하세요: `npm run db:migrate -- --baseline 009`
 
 ### 3) 서버
 ```bash
@@ -148,6 +156,8 @@ npm run dev               # http://localhost:5173
 |---|---|
 | DB ❌ `ER_ACCESS_DENIED_ERROR` | `server/.env`의 DB 사용자·비밀번호 |
 | 서버가 `JWT_SECRET … 넣어 주세요`로 안 켜짐 | `server/.env`에 `JWT_SECRET`(16자 이상 아무 긴 문자열)이 있는지 — 없으면 일부러 안 켜짐 (로그인 위조 방지) |
+| 로그인할 때 `로그인 시도가 너무 많아요` (429) | 15분 안에 같은 아이디로 10번(같은 곳 전체 50번) 틀림 → 기다리거나, 개발 중이면 서버를 다시 켜면 초기화 |
+| DB ❌ `Unknown column` / `doesn't exist` (기능을 새로 받은 뒤) | `cd server && npm run db:migrate` 로 DB 변경 반영 |
 | DB ❌ `ER_BAD_DB_ERROR` / `ER_NO_SUCH_TABLE` | `db/schema.sql`을 실행했는지 |
 | 서버 ❌ `요청 실패 (500/504)` | 서버(`npm run dev`)가 켜져 있는지, 포트 3000 |
 | 소켓이 계속 "연결 중…" | 서버가 켜져 있는지, 화면을 5173으로 열었는지 |

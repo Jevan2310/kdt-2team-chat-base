@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=.env src/index.js",
     "start": "node --env-file-if-exists=.env src/index.js",
-    "seed:users": "node --env-file-if-exists=.env scripts/seed-users.js"
+    "seed:users": "node --env-file-if-exists=.env scripts/seed-users.js",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.js"
   },
   "type": "module",
   "dependencies": {

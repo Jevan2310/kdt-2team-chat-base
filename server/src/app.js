@@ -10,6 +10,10 @@ import driveRoutes from './modules/drive/drive.routes.js';
 
 export const app = express();
 
+// 같은 컴퓨터(loopback)에서 온 프록시(개발 중 Vite)만 믿고, 그 프록시가 알려 준 원래 주소를 req.ip 로 쓴다
+// → 로그인 시도 제한이 사람(접속한 곳)마다 따로 센다. 다른 곳에서 보낸 X-Forwarded-For 는 믿지 않음
+app.set('trust proxy', 'loopback');
+
 app.use(cors({ origin: config.clientOrigin }));
 app.use(express.json());
 

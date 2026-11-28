@@ -6,6 +6,7 @@ CREATE DATABASE IF NOT EXISTS team_chat
   DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE team_chat;
 
+DROP TABLE IF EXISTS schema_migrations;
 DROP TABLE IF EXISTS file_activity;
 DROP TABLE IF EXISTS files;
 DROP TABLE IF EXISTS folders;
@@ -34,7 +35,7 @@ CREATE TABLE users (
   avatar_url    VARCHAR(255) NULL,                         -- 프로필 사진 주소 (/uploads/avatars/…). 없으면 이름 첫 글자
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   -- 부서 이름이 바뀌면 사람들 부서도 같이 바뀌고, 부서가 없어지면 '부서 없음'
-  FOREIGN KEY (department) REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL
+  CONSTRAINT fk_users_department FOREIGN KEY (department) REFERENCES departments(name) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 -- 채팅방
@@ -136,3 +137,15 @@ CREATE TABLE file_activity (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
   INDEX idx_activity_time (created_at)
 );
+
+-- DB 변경 기록 (npm run db:migrate 가 씀). 이 schema.sql 에는 아래 파일들 내용이 이미 들어 있으므로 "한 것"으로 기록해 둔다.
+-- ⚠️ db/migrations 에 새 파일을 추가하면: 그 내용을 이 파일에도 반영하고, 아래 INSERT 에 한 줄 추가할 것
+CREATE TABLE schema_migrations (
+  version     VARCHAR(20) PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  applied_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO schema_migrations (version, name) VALUES
+  ('007', '007_메시지_수정_삭제_반응.sql'),
+  ('008', '008_프로필_사진.sql'),
+  ('009', '009_부서목록_공유드라이브.sql');
