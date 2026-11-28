@@ -22,7 +22,7 @@ function EditBox({ initial, onSave, onCancel }) {
   };
 
   const onKeyDown = (e) => {
-    if (e.nativeEvent.isComposing) return; // 한글 조합 중 Enter 는 글자 확정용
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return; // 한글 조합 중 Enter 는 글자 확정용 (Safari 는 229 로 확인)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       save();

@@ -5,6 +5,7 @@ import { useAuth } from '../auth/useAuth.js';
 import MessageList from '../components/messages/MessageList.jsx';
 import MessageInput from '../components/messages/MessageInput.jsx';
 import ReadersDialog from '../components/messages/ReadersDialog.jsx';
+import Dialog from '../components/common/Dialog.jsx';
 import PersonRow from '../components/users/PersonRow.jsx';
 
 // 같은 id는 한 번만, id 순서대로 (소켓으로 온 것과 API로 받은 것이 겹칠 수 있음)
@@ -208,18 +209,22 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
       setMessages((prev) => mergeMessages(older.messages, prev));
       setHasMore(older.hasMore);
     } catch (err) {
-      setError(err.message);
+      // 1. 실패해도 방 화면은 그대로 두고 짧게 안내 → 버튼을 다시 누르면 됨
+      setNotice(`이전 대화를 불러오지 못했어요. 다시 눌러 주세요. (${err.message})`);
     } finally {
       setLoadingOlder(false);
     }
   };
 
+  // 2. 나가기는 한 번 묻고 진행 (— 버튼 바로 옆이라 잘못 누르기 쉬움)
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const onLeave = async () => {
+    setConfirmLeave(false);
     try {
       await api(`/rooms/${id}/leave`, { method: 'POST', token });
       onBack();
     } catch (err) {
-      setError(err.message);
+      setNotice(`나가지 못했어요. (${err.message})`);
     }
   };
 
@@ -241,7 +246,7 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
         <button type="button" className="link-button" onClick={() => setShowMembers((v) => !v)} aria-expanded={showMembers}>
           👥 {members.length}
         </button>
-        <button type="button" className="link-button danger" onClick={onLeave}>나가기</button>
+        <button type="button" className="link-button danger" onClick={() => setConfirmLeave(true)}>나가기</button>
         <button type="button" className="widget-icon-button" onClick={onMinimize} aria-label="채팅 창 내리기">—</button>
       </header>
 
@@ -274,6 +279,19 @@ export default function ChatRoom({ id, onBack, onMinimize }) {
       )}
       <MessageInput onSend={sendMessage} disabled={!connected} />
       {readers && <ReadersDialog readers={readers} onClose={() => setReadersOf(null)} />}
+      {confirmLeave && (
+        <Dialog title="채팅방 나가기" onClose={() => setConfirmLeave(false)}>
+          <p>
+            <strong>{room.name}</strong>에서 나갈까요?
+            <br />
+            <span className="muted">나가면 이 방의 새 메시지를 받지 않아요. 목록에서 다시 들어올 수 있어요.</span>
+          </p>
+          <div className="dialog-buttons">
+            <button type="button" onClick={() => setConfirmLeave(false)}>취소</button>
+            <button type="button" className="danger-fill" onClick={onLeave}>나가기</button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

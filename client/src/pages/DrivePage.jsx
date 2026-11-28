@@ -13,13 +13,17 @@ import Dialog from '../components/common/Dialog.jsx';
 // 9단계: 로그인한 사람 모두 같은 폴더를 본다. 폴더별 권한은 10단계.
 export default function DrivePage({ trash = false }) {
   const { folderId: param } = useParams();
-  const folderId = trash || !param ? null : Number(param);
+  // 5. /drive/abc 처럼 숫자가 아닌 주소는 "잘못된 주소"로 (서버에 묻지 않음)
+  const invalid = !trash && param !== undefined && !/^[1-9]\d*$/.test(param);
+  const folderId = trash || !param || invalid ? null : Number(param);
+  const viewKey = trash ? 'trash' : invalid ? 'invalid' : String(folderId ?? 'root'); // 지금 보려는 화면
   const { token } = useAuth();
   const navigate = useNavigate();
 
   const [tree, setTree] = useState([]);
-  const [contents, setContents] = useState(null); // { folder, path, folders, files } 또는 휴지통 { folders, files }
-  const [error, setError] = useState('');
+  // 받아 온 내용·오류에 "어느 화면 것인지(key)"를 붙여 둔다 → 다른 폴더로 옮기면 예전 내용 대신 "불러오는 중"
+  const [contents, setContents] = useState(null); // { key, folder, path, folders, files } 또는 휴지통 { key, folders, files }
+  const [error, setError] = useState(null); // { key, message }
   const [notice, setNotice] = useState('');
   const [reloadKey, setReloadKey] = useState(0); // 바꾸면 다시 불러옴
   const [menu, setMenu] = useState(null); // { anchor, item }
@@ -34,23 +38,47 @@ export default function DrivePage({ trash = false }) {
 
   // 왼쪽 트리
   useEffect(() => {
-    driveApi.tree(token).then((d) => setTree(d.folders)).catch(() => {});
+    driveApi
+      .tree(token)
+      .then((d) => setTree(d.folders))
+      .catch((err) => setNotice(`폴더 목록을 불러오지 못했어요. (${err.message})`));
   }, [token, reloadKey]);
 
   // 가운데 내용 (폴더 또는 휴지통)
   useEffect(() => {
+    if (invalid) return;
     let cancelled = false;
+    const at = Date.now(); // 더 나중에 온 결과(내용 또는 오류)가 이기게
     (trash ? driveApi.trash(token) : driveApi.contents(folderId, token))
-      .then((d) => {
-        if (cancelled) return;
-        setContents(d);
-        setError('');
-      })
-      .catch((err) => !cancelled && setError(err.message));
+      .then((d) => !cancelled && setContents({ key: viewKey, at, ...d }))
+      .catch((err) => !cancelled && setError({ key: viewKey, at, message: err.message }));
     return () => {
       cancelled = true;
     };
-  }, [token, folderId, trash, reloadKey]);
+  }, [token, folderId, trash, invalid, viewKey, reloadKey]);
+
+  // 이 화면 것만 쓴다 (같은 화면을 다시 불러오는 동안에는 지금 내용을 그대로 보여 줌)
+  // (보던 폴더를 누가 지워서 다시 불러오기가 404 면, 예전 내용 대신 오류를 보여 준다)
+  const errorIsNewer = error?.key === viewKey && (!contents || contents.key !== viewKey || error.at >= contents.at);
+  const current = contents?.key === viewKey && !errorIsNewer ? contents : null;
+  const currentError = invalid ? '잘못된 주소예요.' : errorIsNewer ? error.message : '';
+
+  // 4. 파일을 "끌어다 놓을 곳"이 아닌 데(트리·채팅 창 등)에 놓으면 브라우저가 파일을 열어 앱을 벗어나는 것 막기
+  useEffect(() => {
+    const isFileDrag = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+    const onDragOver = (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      if (!e.target.closest?.('.drive-main')) e.dataTransfer.dropEffect = 'none';
+    };
+    const onDrop = (e) => isFileDrag(e) && e.preventDefault();
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   // 누가 드라이브를 바꾸면(올리기·이름 바꾸기·삭제 …) 다시 불러온다
   useEffect(() => {
@@ -77,6 +105,10 @@ export default function DrivePage({ trash = false }) {
   const startUpload = async (fileList) => {
     const files = [...fileList];
     if (!files.length || folderId === null) return;
+    if (upload) {
+      setNotice('지금 올리는 중이에요. 끝난 뒤 다시 놓아 주세요.'); // 4. 두 번 겹쳐 올리면 진행률이 섞임
+      return;
+    }
     setUpload({ count: files.length, progress: 0 });
     try {
       const result = await uploadToFolder(folderId, files, token, (progress) => setUpload({ count: files.length, progress }));
@@ -108,18 +140,21 @@ export default function DrivePage({ trash = false }) {
   };
 
   // ── 드래그해서 올리기 (폴더 안에서만) ──
-  const canUpload = !trash && folderId !== null;
+  // 4. 파일을 끌 때만 세고(글자·링크를 끌 때는 무시), 0 아래로 내려가지 않게
+  const canUpload = !trash && !invalid && folderId !== null;
+  const isFileDrag = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
   const dragProps = canUpload
     ? {
         onDragEnter: (e) => {
-          if (![...e.dataTransfer.types].includes('Files')) return;
+          if (!isFileDrag(e)) return;
           dragDepth.current += 1;
           setDragging(true);
         },
-        onDragOver: (e) => e.preventDefault(),
-        onDragLeave: () => {
-          dragDepth.current -= 1;
-          if (dragDepth.current <= 0) setDragging(false);
+        onDragOver: (e) => isFileDrag(e) && e.preventDefault(),
+        onDragLeave: (e) => {
+          if (!isFileDrag(e)) return;
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
         },
         onDrop: (e) => {
           e.preventDefault();
@@ -130,11 +165,12 @@ export default function DrivePage({ trash = false }) {
       }
     : {};
 
-  const path = contents?.path ?? [];
-  const rows = contents
+  const path = current?.path ?? [];
+  const treePath = contents?.path ?? []; // 트리는 불러오는 동안에도 펼친 상태 유지
+  const rows = current
     ? [
-        ...contents.folders.map((f) => ({ ...f, kind: 'folder' })),
-        ...contents.files.map((f) => ({ ...f, kind: 'file' })),
+        ...current.folders.map((f) => ({ ...f, kind: 'folder' })),
+        ...current.files.map((f) => ({ ...f, kind: 'file' })),
       ]
     : [];
 
@@ -145,7 +181,7 @@ export default function DrivePage({ trash = false }) {
         <FolderTree
           folders={tree}
           currentId={folderId}
-          openIds={path.map((p) => p.id)}
+          openIds={treePath.map((p) => p.id)}
           onFolderMenu={(e, f) => openMenu(e, { ...f, kind: 'folder' })}
         />
         <Link to="/drive/trash" className={`tree-root trash-link ${trash ? 'active' : ''}`}>🗑️ 휴지통</Link>
@@ -172,7 +208,7 @@ export default function DrivePage({ trash = false }) {
               </>
             )}
           </nav>
-          {!trash && (
+          {!trash && !invalid && (
             <div className="drive-actions">
               {/* 휴대폰은 왼쪽 트리(휴지통 링크 포함)가 숨겨지므로 여기에도 휴지통 */}
               <Link to="/drive/trash" className="only-sm drive-trash-button" aria-label="휴지통">🗑️</Link>
@@ -209,9 +245,10 @@ export default function DrivePage({ trash = false }) {
             {notice} <button type="button" className="link-button" onClick={() => setNotice('')}>닫기</button>
           </p>
         )}
-        {error && <p className="form-error drive-error">{error} <Link to="/drive">드라이브 맨 위로</Link></p>}
+        {currentError && <p className="form-error drive-error">{currentError} <Link to="/drive">드라이브 맨 위로</Link></p>}
+        {!currentError && !current && <p className="muted drive-loading">불러오는 중…</p>}
 
-        {!error && contents && (
+        {!currentError && current && (
           <div className="drive-table-wrap">
             <table className="drive-table">
               <thead>

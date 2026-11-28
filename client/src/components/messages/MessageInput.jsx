@@ -6,20 +6,26 @@ export default function MessageInput({ onSend, disabled }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
+  // 3. 보내는 순간 입력칸을 비우고(그동안 새로 쓰는 글은 그대로 남음), 실패하면 보낸 글을 되돌려 놓는다
   const send = async () => {
     const content = text.trim();
     if (!content || sending) return;
     setSending(true);
     setError('');
+    setText('');
     const result = await onSend(content);
     setSending(false);
-    if (result.ok) setText('');
-    else setError(result.message);
+    if (!result.ok) {
+      setError(result.message);
+      setText((typed) => (typed ? typed : content)); // 그사이 새로 쓴 게 없으면 보낸 글 복구
+    }
   };
 
   const onKeyDown = (e) => {
-    // 한글 입력 중(조합 중) Enter는 글자 확정용이라 무시
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    // 한글 입력 중(조합 중) Enter는 글자 확정용이라 무시.
+    // Safari 는 조합을 끝내는 Enter 에서 isComposing 이 false 라 keyCode 229 로 한 번 더 확인
+    const composing = e.nativeEvent.isComposing || e.keyCode === 229;
+    if (e.key === 'Enter' && !e.shiftKey && !composing) {
       e.preventDefault();
       send();
     }
