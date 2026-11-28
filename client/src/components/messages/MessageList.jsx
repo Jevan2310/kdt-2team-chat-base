@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import MessageItem from './MessageItem.jsx';
 
 const dateOf = (createdAt) => createdAt?.slice(0, 10) ?? '';
@@ -26,6 +26,28 @@ export default function MessageList({ messages, hasMore, loadingOlder, onLoadOld
   const [selectedId, setSelectedId] = useState(null); // 메뉴가 열린 메시지
   const [editingId, setEditingId] = useState(null); // 수정 중인 메시지
   const itemCtx = { ...ctx, onSelect: setSelectedId, onStartEdit: setEditingId };
+
+  // 메뉴가 열려 있을 때: 메뉴·그 말풍선 말고 다른 곳을 누르거나 Esc 를 누르면 닫는다
+  // (그 말풍선은 원래대로 누르면 닫힘. 다른 말풍선을 누르면 닫히고 그 말풍선 메뉴가 열림)
+  useEffect(() => {
+    if (selectedId === null) return;
+    const onPointerDown = (e) => {
+      if (e.target.closest?.('.msg-actions, .msg-selected')) return;
+      setSelectedId(null);
+    };
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      setSelectedId(null);
+      // 말풍선에 남은 포커스 테두리가 "아직 선택됨"처럼 보이지 않게
+      if (document.activeElement?.classList.contains('msg-bubble')) document.activeElement.blur();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectedId]);
 
   useLayoutEffect(() => {
     const box = boxRef.current;
