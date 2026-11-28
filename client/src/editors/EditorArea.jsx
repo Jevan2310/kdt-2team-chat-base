@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ContextMenu from '../components/common/ContextMenu.jsx';
 import Dialog from '../components/common/Dialog.jsx';
+import { isSaveKey, isSplitKey } from './shortcuts.js';
 import { MAX_GROUPS, computeRects, leaves, sizesAt } from './useEditorLayout.js';
 
 // [편집기 시험판 A] 가운데 편집 영역 (VS Code 처럼)
@@ -46,15 +47,17 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
   };
 
   // Ctrl+\ (⌘\) → 지금 탭을 오른쪽에 하나 더, Shift 까지 누르면 아래에
+  // ⌘S 는 저장할 탭이 없어도 막는다 (브라우저의 "페이지 저장" 창이 뜨지 않게. 저장은 FileViewer 가 함)
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && (e.code === 'Backslash' || e.key === '\\' || e.key === '|')) {
+      if (isSaveKey(e)) e.preventDefault();
+      if (isSplitKey(e)) {
         e.preventDefault();
         dispatch({ type: 'split', side: e.shiftKey ? 'down' : 'right' });
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [dispatch]);
 
   // 숨겨 두었던 탭이 다시 보이면 편집기들이 크기를 다시 재게 (표·사진 편집기는 숨김 상태에서 크기를 0으로 잼)

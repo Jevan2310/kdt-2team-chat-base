@@ -2,6 +2,7 @@ import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'r
 import { api } from '../lib/api.js';
 import { downloadFile, fileIcon, formatDate, formatSize } from '../lib/drive.js';
 import { editorFor } from './registry.js';
+import { isSaveKey } from './shortcuts.js';
 import './editors.css';
 
 // [편집기 시험판 A] 탭 하나의 내용: 파일 보기·편집·저장
@@ -28,7 +29,7 @@ function EditorHost({ file, editor, canEdit, token, focused, onDirtyChange }) {
   const baseRef = useRef(null); // 연 내용의 판 (서버가 X-File-Version 으로 알려 줌) → 그사이 누가 저장했으면 서버가 409
   const dirtyCbRef = useRef(onDirtyChange);
   const readOnly = !editor.canSave || !canEdit;
-  const changedOutside = file.updatedAt > known; // 다른 사람이 저장함 (목록을 다시 받아 알게 됨)
+  const changedOutside = file.updatedAt > known; // 다른 칸이나 다른 사람이 저장함 (목록을 다시 받아 알게 됨)
 
   // 내용 받기: 60초짜리 서명 주소(S5)를 받아 그 주소에서 내용을 가져온다
   useEffect(() => {
@@ -95,21 +96,22 @@ function EditorHost({ file, editor, canEdit, token, focused, onDirtyChange }) {
     }
   }, [readOnly, saving, file.id, file.name, token]);
 
-  // Ctrl+S / ⌘S: 지금 보고 있는 탭만 저장. 저장 안 한 채로 브라우저 탭을 닫으면 한 번 묻게
+  // Ctrl+S / ⌘S: 지금 보고 있는 탭만, 고친 게 있을 때만 저장. 저장 안 한 채로 브라우저 탭을 닫으면 한 번 묻게
+  // capture(true): 편집기 라이브러리가 키를 먼저 가로채도 여기서 먼저 받음
   useEffect(() => {
     const onKey = (e) => {
-      if (focused && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      if (focused && isSaveKey(e)) {
         e.preventDefault();
-        save();
+        if (dirty) save();
       }
     };
     const onLeave = (e) => {
       if (dirty) e.preventDefault();
     };
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     window.addEventListener('beforeunload', onLeave);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('beforeunload', onLeave);
     };
   }, [save, dirty, focused]);
@@ -135,7 +137,7 @@ function EditorHost({ file, editor, canEdit, token, focused, onDirtyChange }) {
       </header>
       {changedOutside && (
         <p className="viewer-banner" role="status">
-          다른 사람이 이 파일을 저장했어요.{dirty ? ' 지금 고친 내용과 겹칠 수 있어요.' : ''}{' '}
+          이 파일이 다른 곳(다른 칸이나 다른 사람)에서 저장됐어요.{dirty ? ' 지금 고친 내용과 겹칠 수 있어요.' : ''}{' '}
           <button type="button" className="link-button" onClick={reload}>새 내용 불러오기</button>
           {dirty && <span className="muted"> (고친 내용은 사라져요)</span>}
         </p>
