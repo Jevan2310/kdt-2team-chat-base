@@ -13,6 +13,7 @@ import PermissionDialog from '../components/drive/PermissionDialog.jsx';
 import EditorArea, { DRAG_FILE } from '../editors/EditorArea.jsx';
 import FileViewer from '../editors/FileViewer.jsx';
 import { TRASH_TAB, fileTab, useEditorLayout } from '../editors/useEditorLayout.js';
+import { ALT, MOD, SAVE, SPLIT_DOWN, SPLIT_RIGHT } from '../editors/shortcuts.js';
 
 // 공유 드라이브 (VS Code 처럼): 왼쪽 = 폴더·파일 탐색기, 가운데 = 연 파일 (탭, 나란히 나누기)
 // 주소: /drive (맨 위) · /drive/:folderId (고른 폴더) · ?file=ID (그 파일 열기) · /drive/trash (휴지통 탭 열기)
@@ -313,10 +314,12 @@ export default function DrivePage({ trash = false }) {
       <div className="welcome-icon" aria-hidden="true">📂</div>
       <p><strong>왼쪽에서 파일을 고르면 여기에서 열려요</strong></p>
       <ul className="muted">
-        <li>Ctrl(⌘)·Alt 누른 채 파일 클릭 → 오른쪽에 나란히</li>
-        <li>탭을 칸 오른쪽 끝으로 끌거나 Ctrl+\ → 화면 나누기</li>
+        <li>{MOD} 또는 {ALT} 누른 채 파일 클릭 → 오른쪽에 나란히</li>
+        <li>탭 바의 ▥ · {SPLIT_RIGHT} → 오른쪽으로 나누기, ▤ · {SPLIT_DOWN} → 아래로 나누기 (최대 6칸)</li>
+        <li>탭이나 파일을 칸의 위·아래·왼쪽·오른쪽 끝으로 끌면 그쪽에 새 칸</li>
+        <li>칸 사이 경계선을 끌면 크기 조절</li>
         <li>컴퓨터의 파일을 왼쪽 폴더에 끌어다 놓으면 올리기</li>
-        <li>Ctrl(⌘)+S → 저장</li>
+        <li>{SAVE} → 저장</li>
       </ul>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ContextMenu from '../components/common/ContextMenu.jsx';
 import Dialog from '../components/common/Dialog.jsx';
-import { isSaveKey, isSplitKey } from './shortcuts.js';
+import { SPLIT_DOWN, SPLIT_RIGHT, isSaveKey, isSplitKey } from './shortcuts.js';
 import { MAX_GROUPS, computeRects, leaves, sizesAt } from './useEditorLayout.js';
 
 // [편집기 시험판 A] 가운데 편집 영역 (VS Code 처럼)
@@ -242,10 +242,10 @@ export default function EditorArea({ layout, dispatch, renderTab, tabInfo, onNot
                 <div className="tab-bar-fill" />
                 {g.active && canSplit && (
                   <>
-                    <button type="button" className="tab-bar-button hide-sm" title="오른쪽으로 나누기 (Ctrl+\)" aria-label="오른쪽으로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id, side: 'right' })}>
+                    <button type="button" className="tab-bar-button hide-sm" title={`오른쪽으로 나누기 (${SPLIT_RIGHT})`} aria-label="오른쪽으로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id, side: 'right' })}>
                       ▥
                     </button>
-                    <button type="button" className="tab-bar-button hide-sm" title="아래로 나누기 (Ctrl+Shift+\)" aria-label="아래로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id, side: 'down' })}>
+                    <button type="button" className="tab-bar-button hide-sm" title={`아래로 나누기 (${SPLIT_DOWN})`} aria-label="아래로 나누기" onClick={() => dispatch({ type: 'split', groupId: g.id, side: 'down' })}>
                       ▤
                     </button>
                   </>

@@ -2,7 +2,7 @@ import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'r
 import { api } from '../lib/api.js';
 import { downloadFile, fileIcon, formatDate, formatSize } from '../lib/drive.js';
 import { editorFor } from './registry.js';
-import { isSaveKey } from './shortcuts.js';
+import { SAVE, isSaveKey } from './shortcuts.js';
 import './editors.css';
 
 // [편집기 시험판 A] 탭 하나의 내용: 파일 보기·편집·저장
@@ -128,7 +128,7 @@ function EditorHost({ file, editor, canEdit, token, focused, onDirtyChange }) {
         <span className="viewer-status" role="status">{dirty && !status ? '저장 안 됨 •' : status}</span>
         <div className="viewer-actions">
           {!readOnly && (
-            <button type="button" className="primary" onClick={save} disabled={saving || !dirty || !blob} title="저장 (Ctrl+S)">
+            <button type="button" className="primary" onClick={save} disabled={saving || !dirty || !blob} title={`저장 (${SAVE})`}>
               저장
             </button>
           )}
